@@ -1,0 +1,34 @@
+# Xcode
+.DS_Store
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+DerivedData/
+.build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.pins
+Package.resolved
+
+# CocoaPods
+Pods/
+Podfile.lock
+
+# Carthage
+Carthage/Build/
+
+# Secrets (don't commit real credentials in production)
+# Note: For this demo, credentials are in SupabaseClient.swift
+# In production, use environment variables or a secrets manager

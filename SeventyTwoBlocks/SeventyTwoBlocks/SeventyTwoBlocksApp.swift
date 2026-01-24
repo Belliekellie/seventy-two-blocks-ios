@@ -1,3 +1,10 @@
+//
+//  SeventyTwoBlocksApp.swift
+//  SeventyTwoBlocks
+//
+//  Created by George Kelly on 24/01/2026.
+//
+
 import SwiftUI
 
 @main

@@ -1,5 +1,6 @@
 import Foundation
-import Supabase
+import Combine
+import PostgREST
 
 @MainActor
 final class BlockManager: ObservableObject {
@@ -23,7 +24,7 @@ final class BlockManager: ObservableObject {
 
         do {
             // Fetch blocks for the date
-            let fetchedBlocks: [Block] = try await supabase
+            let fetchedBlocks: [Block] = try await supabaseDB
                 .from("blocks")
                 .select()
                 .eq("date", value: dateString)
@@ -52,28 +53,15 @@ final class BlockManager: ObservableObject {
 
     // MARK: - Update Block
 
-    func updateBlock(_ block: Block, updates: [String: Any]) async {
-        do {
-            try await supabase
-                .from("blocks")
-                .update(updates)
-                .eq("id", value: block.id)
-                .execute()
-
-            // Refresh blocks
-            if let date = parseDate(block.date) {
-                await loadBlocks(for: date)
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
+    func updateBlock(_ block: Block) async {
+        await saveBlock(block)
     }
 
     // MARK: - Save Block
 
     func saveBlock(_ block: Block) async {
         do {
-            try await supabase
+            try await supabaseDB
                 .from("blocks")
                 .upsert(block)
                 .execute()
@@ -91,7 +79,7 @@ final class BlockManager: ObservableObject {
 
     func loadCategories() async {
         do {
-            let fetchedCategories: [Category] = try await supabase
+            let fetchedCategories: [Category] = try await supabaseDB
                 .from("categories")
                 .select()
                 .order("label")

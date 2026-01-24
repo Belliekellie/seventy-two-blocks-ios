@@ -27,13 +27,17 @@ struct AuthView: View {
                 VStack(spacing: 16) {
                     TextField("Email", text: $email)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
                         .textContentType(.emailAddress)
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
+                        #endif
 
                     SecureField("Password", text: $password)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
                         .textContentType(isSignUp ? .newPassword : .password)
+                        #endif
 
                     if let error = authManager.error {
                         Text(error)

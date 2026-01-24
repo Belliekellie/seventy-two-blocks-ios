@@ -56,7 +56,7 @@ struct BlockSheetView: View {
                                         .background(
                                             category == cat.id
                                                 ? cat.swiftUIColor.opacity(0.2)
-                                                : Color(.systemGray6)
+                                                : Color.gray.opacity(0.15)
                                         )
                                         .foregroundStyle(
                                             category == cat.id
@@ -124,7 +124,9 @@ struct BlockSheetView: View {
                 }
             }
             .navigationTitle("Block Details")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -153,8 +155,10 @@ struct BlockSheetView: View {
                 await blockManager.loadCategories()
             }
         }
+        #if os(iOS)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        #endif
     }
 }
 
@@ -173,7 +177,7 @@ struct StatusButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(isSelected ? color.opacity(0.2) : Color(.systemGray6))
+            .background(isSelected ? color.opacity(0.2) : Color.gray.opacity(0.15))
             .foregroundStyle(isSelected ? color : .primary)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(

@@ -27,10 +27,12 @@ extension Category {
         let components = color.split(separator: " ")
         guard components.count >= 3,
               let h = Double(components[0]),
-              let s = Double(components[1].dropLast()) / 100,
-              let l = Double(components[2].dropLast()) / 100 else {
+              let sValue = Double(components[1].dropLast()),
+              let lValue = Double(components[2].dropLast()) else {
             return .gray
         }
+        let s = sValue / 100
+        let l = lValue / 100
         return Color(hue: h / 360, saturation: s, brightness: l)
     }
 }

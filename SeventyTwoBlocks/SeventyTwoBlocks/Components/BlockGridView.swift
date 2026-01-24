@@ -33,7 +33,7 @@ struct BlockItemView: View {
 
     private var backgroundColor: Color {
         if block.isMuted {
-            return Color(.systemGray5)
+            return Color.gray.opacity(0.2)
         }
 
         switch block.status {
@@ -44,7 +44,7 @@ struct BlockItemView: View {
             }
             return .green.opacity(0.8)
         case .skipped:
-            return Color(.systemGray4)
+            return Color.gray.opacity(0.3)
         case .planned:
             if let category = block.category,
                let cat = blockManager.categories.first(where: { $0.id == category }) {
@@ -53,9 +53,9 @@ struct BlockItemView: View {
             return .blue.opacity(0.3)
         case .idle:
             if isPastBlock {
-                return Color(.systemGray5)
+                return Color.gray.opacity(0.2)
             }
-            return Color(.systemBackground)
+            return Color.clear
         }
     }
 
@@ -63,7 +63,7 @@ struct BlockItemView: View {
         if isCurrentBlock {
             return .primary
         }
-        return Color(.systemGray4)
+        return Color.gray.opacity(0.3)
     }
 
     var body: some View {

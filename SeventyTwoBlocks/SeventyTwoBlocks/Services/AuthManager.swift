@@ -1,11 +1,12 @@
 import Foundation
-import Supabase
+import Combine
+import Auth
 import AuthenticationServices
 
 @MainActor
 final class AuthManager: ObservableObject {
     @Published var isAuthenticated = false
-    @Published var currentUser: User?
+    @Published var currentUser: Auth.User?
     @Published var isLoading = false
     @Published var error: String?
 
@@ -14,7 +15,7 @@ final class AuthManager: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let session = try await supabase.auth.session
+            let session = try await supabaseAuth.session
             currentUser = session.user
             isAuthenticated = true
         } catch {
@@ -29,7 +30,7 @@ final class AuthManager: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let session = try await supabase.auth.signIn(
+            let session = try await supabaseAuth.signIn(
                 email: email,
                 password: password
             )
@@ -46,7 +47,7 @@ final class AuthManager: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let response = try await supabase.auth.signUp(
+            let response = try await supabaseAuth.signUp(
                 email: email,
                 password: password
             )
@@ -61,7 +62,7 @@ final class AuthManager: ObservableObject {
 
     func signOut() async {
         do {
-            try await supabase.auth.signOut()
+            try await supabaseAuth.signOut()
             isAuthenticated = false
             currentUser = nil
         } catch {
@@ -81,7 +82,7 @@ final class AuthManager: ObservableObject {
         }
 
         do {
-            let session = try await supabase.auth.signInWithIdToken(
+            let session = try await supabaseAuth.signInWithIdToken(
                 credentials: .init(
                     provider: .apple,
                     idToken: tokenString

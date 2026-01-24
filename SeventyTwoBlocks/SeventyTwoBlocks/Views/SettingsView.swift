@@ -1,4 +1,5 @@
 import SwiftUI
+import Auth
 
 struct SettingsView: View {
     @EnvironmentObject var authManager: AuthManager
@@ -14,11 +15,11 @@ struct SettingsView: View {
             Form {
                 // Account section
                 Section("Account") {
-                    if let email = authManager.currentUser?.email {
+                    if let user = authManager.currentUser {
                         HStack {
                             Text("Email")
                             Spacer()
-                            Text(email)
+                            Text(user.email ?? "No email")
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -85,7 +86,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
