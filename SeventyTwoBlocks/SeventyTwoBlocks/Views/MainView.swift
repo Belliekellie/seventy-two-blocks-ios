@@ -244,6 +244,17 @@ struct MainView: View {
 
     private func setupTimerCallbacks() {
         timerManager.onTimerComplete = { blockIndex, date, isBreak, secondsUsed, initialTime, segments in
+            // IMMEDIATELY mark the block .done in local state (synchronous, no race condition)
+            // This ensures the grid shows it as completed before the async DB save finishes
+            if !isBreak {
+                if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                    self.blockManager.blocks[idx].status = .done
+                    self.blockManager.blocks[idx].segments = segments
+                    self.blockManager.blocks[idx].usedSeconds = secondsUsed
+                    self.blockManager.blocks[idx].progress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
+                    print("✅ Immediately marked block \(blockIndex) as .done in local state")
+                }
+            }
             Task {
                 await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments)
             }
@@ -257,7 +268,10 @@ struct MainView: View {
     }
 
     private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment]) async {
-        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else { return }
+        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
+            print("⚠️ saveTimerCompletion: block \(blockIndex) not found in local array, skipping DB save")
+            return
+        }
 
         // Calculate progress based on actual time used vs block duration
         let blockDurationSeconds = 20 * 60  // 1200 seconds

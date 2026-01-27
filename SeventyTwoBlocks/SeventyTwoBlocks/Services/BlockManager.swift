@@ -13,6 +13,7 @@ final class BlockManager: ObservableObject {
 
     private var currentDate: String = ""
     private var categoriesLoaded = false
+    private var categoriesAreDefaults = false  // Track if we fell back to defaults
     private var favoriteLabelsLoaded = false
 
     // MARK: - Load Blocks
@@ -20,8 +21,8 @@ final class BlockManager: ObservableObject {
     func loadBlocks(for date: Date) async {
         let dateString = formatDate(date)
 
-        // Always load categories if not loaded yet
-        if !categoriesLoaded {
+        // Load categories if not loaded yet, or retry if we fell back to defaults
+        if !categoriesLoaded || categoriesAreDefaults {
             await loadCategories()
         }
 
@@ -74,6 +75,13 @@ final class BlockManager: ObservableObject {
 
     func reloadBlocks() async {
         print("🔄 reloadBlocks() called, currentDate was: \(currentDate)")
+
+        // Retry categories if we're stuck on defaults
+        if categoriesAreDefaults {
+            print("🔄 Categories are defaults, retrying load...")
+            await loadCategories()
+        }
+
         let savedDate = currentDate
         currentDate = "" // Force reload
         if let date = parseDate(savedDate) {
@@ -229,6 +237,7 @@ final class BlockManager: ObservableObject {
                 print("⚠️ No session, using default categories")
                 categories = Category.defaults
                 categoriesLoaded = true
+                categoriesAreDefaults = true
                 return
             }
 
@@ -258,6 +267,7 @@ final class BlockManager: ObservableObject {
                 // Load categories
                 if let customCats = profile.customCategories, !customCats.isEmpty {
                     categories = customCats
+                    categoriesAreDefaults = false
                     print("✅ Loaded \(customCats.count) custom categories from Supabase")
                     // Log labels for each category
                     for cat in customCats {
@@ -265,10 +275,12 @@ final class BlockManager: ObservableObject {
                     }
                 } else {
                     categories = Category.defaults
+                    categoriesAreDefaults = true
                     print("⚠️ Using \(Category.defaults.count) default categories (customCategories was \(profile.customCategories == nil ? "nil" : "empty"))")
                 }
             } else {
                 categories = Category.defaults
+                categoriesAreDefaults = true
                 print("✅ Using \(Category.defaults.count) default categories (no profile row)")
             }
 
@@ -278,11 +290,12 @@ final class BlockManager: ObservableObject {
             categoriesLoaded = true
 
         } catch {
-            // On error, use defaults
+            // On error, use defaults (will retry on next loadBlocks call)
             print("❌ Error loading categories: \(error)")
-            print("Using default categories as fallback")
+            print("Using default categories as fallback (will retry)")
             categories = Category.defaults
             categoriesLoaded = true
+            categoriesAreDefaults = true
         }
     }
 
@@ -567,8 +580,6 @@ final class BlockManager: ObservableObject {
             let hasUsedSeconds = block.usedSeconds > 0
             let hasRuns = !(block.runs?.isEmpty ?? true)
             let hasSnapshot = block.activeRunSnapshot != nil
-            let hasProgress = block.progress > 0
-
             // Only mark as done if there's REAL usage data (not just progress which could be stale)
             // Segments and usedSeconds are the most reliable indicators of actual work
             let hasRealUsage = hasSegments || hasUsedSeconds || hasRuns || hasSnapshot

@@ -614,11 +614,37 @@ struct BlockItemView: View {
         return segments.contains { $0.type == .break && $0.seconds > 0 }
     }
 
-    /// Check if block has multiple different categories
-    private var hasMultipleCategories: Bool {
-        guard let segments = block?.segments else { return false }
-        let workCategories = Set(segments.compactMap { $0.type == .work ? $0.category : nil })
-        return workCategories.count > 1
+    /// Minimum seconds a category needs to count as "meaningful" on a block
+    /// Prevents brief spillover (e.g., continuing into a block then switching within seconds)
+    /// from inflating the +N count
+    private let meaningfulCategoryThreshold = 60
+
+    /// Count of distinct work categories with meaningful time (60s+)
+    private var distinctMeaningfulCategoryCount: Int {
+        guard let segments = block?.segments else { return 0 }
+        // Aggregate time per category
+        var categoryTime: [String: Int] = [:]
+        for seg in segments where seg.type == .work && seg.seconds > 0 {
+            let cat = seg.category ?? "_none_"
+            categoryTime[cat, default: 0] += seg.seconds
+        }
+        // Only count categories with meaningful time
+        return categoryTime.values.filter { $0 >= meaningfulCategoryThreshold }.count
+    }
+
+    /// Get the dominant category (most time) from work segments
+    private var dominantCategory: String? {
+        guard let segments = block?.segments else { return nil }
+        var categoryTime: [String: Int] = [:]
+        for seg in segments where seg.type == .work && seg.seconds > 0 {
+            let cat = seg.category ?? "_none_"
+            categoryTime[cat, default: 0] += seg.seconds
+        }
+        let sorted = categoryTime.sorted { $0.value > $1.value }
+        if let top = sorted.first, top.key != "_none_" {
+            return top.key
+        }
+        return nil
     }
 
     /// Get dominant label from segments (one with most time)
@@ -643,7 +669,7 @@ struct BlockItemView: View {
         return segments.contains { $0.type == .work && $0.seconds > 0 }
     }
 
-    /// Build display label for done blocks with +brk suffix if needed
+    /// Build display label for done blocks with +N suffix for additional categories
     private var doneBlockDisplayLabel: String? {
         // If block has NO work segments, it's break-only — just show "Break"
         if !hasWorkSegments {
@@ -654,7 +680,7 @@ struct BlockItemView: View {
         }
 
         // Block has work segments - get the primary work label
-        // Prefer dominant label from segments (most time), then block label, then category name
+        // Use dominant label from segments (most time), then block label, then category name
         let dominantLabel = dominantLabelFromSegments
         let blockLabel = block?.label?.isEmpty == false ? block?.label : nil
 
@@ -667,16 +693,15 @@ struct BlockItemView: View {
         }
 
         guard var result = safePrimaryLabel, !result.isEmpty else {
-            // Has work but no label - if also had break, just return nil (color fill tells the story)
-            if hasBreakSegments {
-                return nil
-            }
             return nil
         }
 
-        // Add +brk suffix if block ALSO has break segments (work + break mix)
-        if hasBreakSegments {
-            result += " +brk"
+        // Add +N suffix showing how many ADDITIONAL categories with meaningful time (60s+)
+        // Brief spillover (<60s) from continuing into a block is ignored
+        // Only counts distinct work categories, not label changes within same category
+        let extraCategories = distinctMeaningfulCategoryCount - 1
+        if extraCategories > 0 {
+            result += " +\(extraCategories)"
         }
 
         return result
@@ -762,9 +787,6 @@ struct BlockItemView: View {
                         // Calculate total fill to determine if we're at 100%
                         let previousScale = 1.0 / 1200.0
                         let liveStartOffset = timerManager.previousVisualProportion
-                        let totalLiveFill = timerManager.liveSegmentsIncludingCurrent.reduce(0.0) { $0 + Double($1.seconds) * timerManager.sessionScaleFactor }
-                        let totalFill = liveStartOffset + totalLiveFill
-
                         // Scale fill so it visually reaches the edge exactly when timer hits 0
                         // Corner radius makes ~97.5% visual look full, so we use 0.975 scale
                         // At 100% actual fill, visual = 97.5% which looks full due to corner radius

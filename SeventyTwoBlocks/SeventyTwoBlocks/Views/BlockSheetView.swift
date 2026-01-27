@@ -163,6 +163,9 @@ struct BlockSheetView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
+    // Maximum characters for a label (keeps text fitting neatly on block grid)
+    private let maxLabelLength = 14
+
     // Normalize label (trim whitespace, convert empty to nil)
     private func normalizeLabel(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -183,7 +186,32 @@ struct BlockSheetView: View {
                     }
                 }
 
-                // Timer section
+                // Time breakdown at top for past blocks (most important info)
+                if isPastBlock || isViewingPastDay {
+                    Section {
+                        TimeBreakdownView(
+                            block: block,
+                            categories: blockManager.categories,
+                            categoryColor: categoryColor,
+                            isPastBlock: isPastBlock || isViewingPastDay,
+                            isTimerRunning: false,
+                            onSaveSegments: { updatedSegments in
+                                Task {
+                                    await saveSegments(updatedSegments)
+                                }
+                            }
+                        )
+                    } header: {
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                                .font(.caption)
+                            Text("Time Breakdown")
+                        }
+                    }
+                }
+
+                // Timer section (hidden for past blocks — no useful info to show)
+                if !isPastBlock && !isViewingPastDay {
                 Section("Timer") {
                     VStack(spacing: 16) {
                         // Time display
@@ -402,6 +430,7 @@ struct BlockSheetView: View {
                         }
                     }
                 }
+                } // end if !isPastBlock && !isViewingPastDay
 
                 // Category section
                 Section {
@@ -473,6 +502,11 @@ struct BlockSheetView: View {
                             .textInputAutocapitalization(.sentences)
                             #endif
                             .onChange(of: label) { _, newValue in
+                                // Enforce character limit
+                                if newValue.count > maxLabelLength {
+                                    label = String(newValue.prefix(maxLabelLength))
+                                    return // onChange will fire again with truncated value
+                                }
                                 hasChanges = true
                                 // Update timer label if running
                                 if isTimerRunningForThisBlock {
@@ -658,26 +692,34 @@ struct BlockSheetView: View {
                     }
                 } header: {
                     Text("Label")
+                } footer: {
+                    Text("\(label.count)/\(maxLabelLength) characters")
+                        .font(.caption2)
+                        .foregroundStyle(label.count >= maxLabelLength ? .orange : .secondary)
                 }
 
-                // Time breakdown - show after label section
-                Section {
-                    TimeBreakdownView(
-                        block: block,
-                        categories: blockManager.categories,
-                        categoryColor: categoryColor,
-                        isPastBlock: isPastBlock,
-                        onSaveSegments: { updatedSegments in
-                            Task {
-                                await saveSegments(updatedSegments)
+                // Time breakdown - show after label section (only for non-past blocks;
+                // past blocks have it at the top of the sheet)
+                if !isPastBlock && !isViewingPastDay {
+                    Section {
+                        TimeBreakdownView(
+                            block: block,
+                            categories: blockManager.categories,
+                            categoryColor: categoryColor,
+                            isPastBlock: false,
+                            isTimerRunning: isTimerRunningForThisBlock,
+                            onSaveSegments: { updatedSegments in
+                                Task {
+                                    await saveSegments(updatedSegments)
+                                }
                             }
+                        )
+                    } header: {
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                                .font(.caption)
+                            Text("Time Breakdown")
                         }
-                    )
-                } header: {
-                    HStack {
-                        Image(systemName: "chart.bar.fill")
-                            .font(.caption)
-                        Text("Time Breakdown")
                     }
                 }
 
@@ -994,6 +1036,18 @@ struct BlockSheetView: View {
         // Recalculate usedSeconds from segments
         updatedBlock.usedSeconds = updatedSegments.reduce(0) { $0 + $1.seconds }
 
+        // Update the block's top-level category and label to match the dominant work segment
+        // so the block grid fill color reflects the edited data
+        let workSegments = updatedSegments.filter { $0.type == .work && $0.seconds > 0 }
+        if let dominant = workSegments.max(by: { $0.seconds < $1.seconds }) {
+            updatedBlock.category = dominant.category
+            updatedBlock.label = dominant.label
+            // Also update local state so the sheet reflects the change
+            category = dominant.category
+            label = dominant.label ?? ""
+            hasChanges = true
+        }
+
         await blockManager.saveBlock(updatedBlock)
         await blockManager.reloadBlocks()
     }
@@ -1006,6 +1060,7 @@ struct TimeBreakdownView: View {
     let categories: [Category]
     let categoryColor: Color
     let isPastBlock: Bool
+    var isTimerRunning: Bool = false
     var onSaveSegments: (([BlockSegment]) -> Void)?
 
     @State private var isEditing = false
@@ -1104,7 +1159,13 @@ struct TimeBreakdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if isEditing {
+            if isTimerRunning {
+                // Timer is active - don't show breakdown (it would get overwritten)
+                Text("Time breakdown will be available when this block completes")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .italic()
+            } else if isEditing {
                 // EDITING MODE - show individual segment editors
                 Text("Edit category and label for each segment:")
                     .font(.caption)
