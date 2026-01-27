@@ -372,8 +372,9 @@ struct MainView: View {
             await blockManager.saveBlock(newBlock)
             print("🔄 New block created")
         }
-        await blockManager.reloadBlocks()
-        print("🔄 Blocks reloaded")
+        // NOTE: Do NOT call reloadBlocks() here - saveBlock already updates the local array
+        // Calling reloadBlocks() triggers a SwiftUI re-render cycle that can cause
+        // the timer to restart in a loop (the continuation handler gets re-triggered)
     }
 
     // MARK: - Dialog Actions
@@ -385,6 +386,12 @@ struct MainView: View {
         // NEVER start a timer on a future block
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let nextBlockIndex = actualCurrentBlock
+
+        // GUARD: Don't restart if timer is already running on this block
+        if timerManager.isActive && timerManager.currentBlockIndex == nextBlockIndex {
+            print("⚠️ handleContinueWork: Timer already active on block \(nextBlockIndex), skipping")
+            return
+        }
 
         guard nextBlockIndex < 72 else {
             handleStop()
@@ -491,10 +498,13 @@ struct MainView: View {
 
     private func handleBackToWork() {
         // ALWAYS resume work on the CURRENT TIME block
-        // Never jump to a future block - that makes no sense
-        // The break was happening on some block, but "back to work" means
-        // "start working now" which is always the current time block
         let actualCurrentBlock = Block.getCurrentBlockIndex()
+
+        // GUARD: Don't restart if timer is already running work on this block
+        if timerManager.isActive && !timerManager.isBreak && timerManager.currentBlockIndex == actualCurrentBlock {
+            print("⚠️ handleBackToWork: Work timer already active on block \(actualCurrentBlock), skipping")
+            return
+        }
 
         guard actualCurrentBlock < 72 else {
             handleStop()
