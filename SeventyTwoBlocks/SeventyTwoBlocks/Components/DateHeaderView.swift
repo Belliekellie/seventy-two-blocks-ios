@@ -2,9 +2,26 @@ import SwiftUI
 
 struct DateHeaderView: View {
     @Binding var selectedDate: Date
+    @AppStorage("dayStartHour") private var dayStartHour = 6
 
+    /// Whether selectedDate matches the "logical today" (accounting for dayStartHour)
     private var isToday: Bool {
-        Calendar.current.isDateInToday(selectedDate)
+        let now = Date()
+        let calendar = Calendar.current
+        let currentHour = calendar.component(.hour, from: now)
+
+        // Calculate logical today
+        let logicalToday: Date
+        if currentHour < dayStartHour {
+            logicalToday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
+        } else {
+            logicalToday = now
+        }
+
+        // Compare date strings
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: selectedDate) == formatter.string(from: logicalToday)
     }
 
     var body: some View {

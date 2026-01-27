@@ -3,10 +3,10 @@ import Auth
 import PostgREST
 import Security
 
-// MARK: - Supabase Configuration
+// MARK: - Supabase Configuration (72 Blocks - btsveepnfeynrctpmlyi)
 enum SupabaseConfig {
-    static let url = "https://kvosxgdogzziglbpjyts.supabase.co"
-    static let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2b3N4Z2RvZ3p6aWdsYnBqeXRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODkxNTQsImV4cCI6MjA4MjI2NTE1NH0.v1mynv5W83raFacsJpraQfGzaRx_n89oHuYG5s4wYkA"
+    static let url = "https://btsveepnfeynrctpmlyi.supabase.co"
+    static let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0c3ZlZXBuZmV5bnJjdHBtbHlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDc3NjksImV4cCI6MjA4MzUyMzc2OX0.sDBxjP_YyoxqzS1sVCZoq4COIO9KGM2HyST4wqqD2RU"
 
     static var baseURL: URL {
         URL(string: url)!
@@ -80,7 +80,38 @@ final class SupabaseManager: @unchecked Sendable {
     static let shared = SupabaseManager()
 
     let auth: AuthClient
-    let database: PostgrestClient
+    private let storage = KeychainAuthStorage()
+
+    /// Get database client with current auth token
+    func getDatabase() async -> PostgrestClient {
+        var headers: [String: String] = ["apikey": SupabaseConfig.anonKey]
+
+        // Try to get current access token from session
+        do {
+            let session = try await auth.session
+            headers["Authorization"] = "Bearer \(session.accessToken)"
+            print("✅ Got auth token for user: \(session.user.id)")
+        } catch {
+            print("⚠️ No active session for database request: \(error)")
+        }
+
+        return PostgrestClient(
+            url: SupabaseConfig.restURL,
+            schema: "public",
+            headers: headers,
+            logger: nil
+        )
+    }
+
+    /// Synchronous database client (for compatibility, may not have auth token)
+    var database: PostgrestClient {
+        PostgrestClient(
+            url: SupabaseConfig.restURL,
+            schema: "public",
+            headers: ["apikey": SupabaseConfig.anonKey],
+            logger: nil
+        )
+    }
 
     private init() {
         // Initialize Auth client with configuration
@@ -91,16 +122,6 @@ final class SupabaseManager: @unchecked Sendable {
             logger: nil
         )
         auth = AuthClient(configuration: authConfig)
-
-        // Initialize PostgREST client
-        database = PostgrestClient(
-            url: SupabaseConfig.restURL,
-            schema: "public",
-            headers: [
-                "apikey": SupabaseConfig.anonKey
-            ],
-            logger: nil
-        )
     }
 }
 
@@ -111,4 +132,8 @@ var supabaseAuth: AuthClient {
 
 var supabaseDB: PostgrestClient {
     SupabaseManager.shared.database
+}
+
+func supabaseDBAsync() async -> PostgrestClient {
+    await SupabaseManager.shared.getDatabase()
 }
