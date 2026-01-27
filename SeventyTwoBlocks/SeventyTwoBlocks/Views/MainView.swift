@@ -379,7 +379,13 @@ struct MainView: View {
     // MARK: - Dialog Actions
 
     private func handleContinueWork() {
-        let nextBlockIndex = (timerManager.currentBlockIndex ?? currentBlockIndex) + 1
+        // ALWAYS continue on the CURRENT TIME block
+        // The timer completed at the block boundary, so the current block IS the next one
+        // If the user waited before clicking, we still go to wherever "now" is
+        // NEVER start a timer on a future block
+        let actualCurrentBlock = Block.getCurrentBlockIndex()
+        let nextBlockIndex = actualCurrentBlock
+
         guard nextBlockIndex < 72 else {
             handleStop()
             return
@@ -419,7 +425,8 @@ struct MainView: View {
     }
 
     private func handleTakeBreak() {
-        let blockIndex = timerManager.currentBlockIndex ?? currentBlockIndex
+        // Always use the actual current time block for break
+        let blockIndex = Block.getCurrentBlockIndex()
 
         timerManager.continueToNextBlock(
             nextBlockIndex: blockIndex,
@@ -444,26 +451,19 @@ struct MainView: View {
     }
 
     private func handleExtendBreak() {
-        // Use the CURRENT block index (the one we're in now), not the old block
-        // This ensures break extends into the current time slot, not the expired one
+        // ALWAYS extend break on the CURRENT TIME block
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let timerBlockIndex = timerManager.currentBlockIndex ?? currentBlockIndex
-
-        // If the timer's block has passed, move to the current block
-        let blockIndex = timerBlockIndex < actualCurrentBlock ? actualCurrentBlock : timerBlockIndex
+        let blockIndex = actualCurrentBlock
 
         guard blockIndex < 72 else {
             handleStop()
             return
         }
 
-        // IMPORTANT: Get segments from the timer manager, NOT from the saved block
-        // The timer's segments are still available after completion (until dialog dismiss)
-        // The block's saved data might not be updated yet since save is async
+        // Get segments: from timer if same block, from saved data if moving to new block
         let timerSegments = timerManager.previousSegments + timerManager.liveSegments
 
-        // If moving to a different block, start fresh on that block
-        // Otherwise continue with the timer's segments
         let existingSegments: [BlockSegment]
         if blockIndex != timerBlockIndex {
             // Moving to new block - get that block's existing segments (if any)
@@ -490,24 +490,18 @@ struct MainView: View {
     }
 
     private func handleBackToWork() {
-        // Use the CURRENT block index if the timer's block has passed
+        // ALWAYS resume work on the CURRENT TIME block
+        // Never jump to a future block - that makes no sense
+        // The break was happening on some block, but "back to work" means
+        // "start working now" which is always the current time block
         let actualCurrentBlock = Block.getCurrentBlockIndex()
-        let timerBlockIndex = timerManager.currentBlockIndex ?? currentBlockIndex
 
-        // Determine the next block to continue on
-        // If timer's block has passed, go to the actual current block
-        // Otherwise, go to the next block after the timer's block
-        let nextBlockIndex: Int
-        if timerBlockIndex < actualCurrentBlock {
-            nextBlockIndex = actualCurrentBlock
-        } else {
-            nextBlockIndex = timerBlockIndex + 1
-        }
-
-        guard nextBlockIndex < 72 else {
+        guard actualCurrentBlock < 72 else {
             handleStop()
             return
         }
+
+        let nextBlockIndex = actualCurrentBlock
 
         // Use preserved pre-break work context (lastWorkCategory/lastWorkLabel)
         // Fall back to currentCategory/currentLabel if not in break mode
@@ -551,10 +545,11 @@ struct MainView: View {
     }
 
     private func handleSkipNextBlock() {
-        // Skip the next block (block+1) and continue to the one after (block+2)
-        let currentBlock = timerManager.currentBlockIndex ?? currentBlockIndex
-        let skipBlockIndex = currentBlock + 1
-        let continueBlockIndex = currentBlock + 2
+        // Skip the next block and continue to the one after
+        // Use actual current time to determine which blocks to skip/continue
+        let actualCurrentBlock = Block.getCurrentBlockIndex()
+        let skipBlockIndex = actualCurrentBlock
+        let continueBlockIndex = actualCurrentBlock + 1
 
         // Can't skip if we'd go past 72
         guard continueBlockIndex < 72 else {

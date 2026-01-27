@@ -637,21 +637,45 @@ struct BlockItemView: View {
         return nil
     }
 
-    /// Build display label for done blocks with +break suffix if needed
-    private var doneBlockDisplayLabel: String? {
-        // Get primary label: block's label, dominant from segments, or category label
-        let primaryLabel = block?.label?.isEmpty == false ? block?.label : (dominantLabelFromSegments ?? categoryLabel)
+    /// Check if block has any work segments with actual time
+    private var hasWorkSegments: Bool {
+        guard let segments = block?.segments else { return false }
+        return segments.contains { $0.type == .work && $0.seconds > 0 }
+    }
 
-        guard var result = primaryLabel, !result.isEmpty else {
-            // No work label - if only break, return "Break"
+    /// Build display label for done blocks with +brk suffix if needed
+    private var doneBlockDisplayLabel: String? {
+        // If block has NO work segments, it's break-only — just show "Break"
+        if !hasWorkSegments {
             if hasBreakSegments {
                 return "Break"
             }
             return nil
         }
 
-        // Add +break suffix if block has break segments (but isn't break-only)
-        if hasBreakSegments && block?.category != "break" {
+        // Block has work segments - get the primary work label
+        // Prefer dominant label from segments (most time), then block label, then category name
+        let dominantLabel = dominantLabelFromSegments
+        let blockLabel = block?.label?.isEmpty == false ? block?.label : nil
+
+        // Don't use block label if it's "Break" (leftover from break mode)
+        let safePrimaryLabel: String?
+        if let bl = blockLabel, bl.lowercased() == "break" {
+            safePrimaryLabel = dominantLabel ?? categoryLabel
+        } else {
+            safePrimaryLabel = blockLabel ?? dominantLabel ?? categoryLabel
+        }
+
+        guard var result = safePrimaryLabel, !result.isEmpty else {
+            // Has work but no label - if also had break, just return nil (color fill tells the story)
+            if hasBreakSegments {
+                return nil
+            }
+            return nil
+        }
+
+        // Add +brk suffix if block ALSO has break segments (work + break mix)
+        if hasBreakSegments {
             result += " +brk"
         }
 

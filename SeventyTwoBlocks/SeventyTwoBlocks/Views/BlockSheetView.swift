@@ -321,8 +321,21 @@ struct BlockSheetView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
+                            } else if isPastBlock {
+                                // Past block on today - can't start timer
+                                VStack(spacing: 4) {
+                                    Text("Block has passed")
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                    Text("Timers can only run on the current block")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
                             } else {
-                                // Start button (for current and past blocks)
+                                // Start button (current block only)
                                 Button(action: {
                                     startTimer()
                                 }) {

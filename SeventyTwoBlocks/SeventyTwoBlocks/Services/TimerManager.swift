@@ -118,6 +118,17 @@ final class TimerManager: ObservableObject {
     // MARK: - Timer Control
 
     func startTimer(for blockIndex: Int, date: String, duration: Int? = nil, isBreakMode: Bool = false, category: String? = nil, label: String? = nil, existingSegments: [BlockSegment] = []) {
+        // GUARD: Never start a timer on a past or future block
+        let currentTimeBlock = Block.getCurrentBlockIndex()
+        if blockIndex < currentTimeBlock {
+            print("⏱️ Block \(blockIndex) is in the past (current: \(currentTimeBlock)), cannot start timer")
+            return
+        }
+        if blockIndex > currentTimeBlock {
+            print("⏱️ Block \(blockIndex) is in the future (current: \(currentTimeBlock)), cannot start timer")
+            return
+        }
+
         // Stop any existing timer
         stopTimerInternal()
 
