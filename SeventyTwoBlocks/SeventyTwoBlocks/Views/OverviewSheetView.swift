@@ -628,17 +628,22 @@ struct StatBox: View {
     let label: String
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundStyle(iconColor)
+                .frame(height: 28)
 
             Text(value)
                 .font(.title2.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(height: 28)
 
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(height: 16)
         }
         .frame(maxWidth: .infinity)
     }
@@ -652,9 +657,13 @@ struct MiniStatBox: View {
         VStack(spacing: 4) {
             Text(value)
                 .font(.title3.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(height: 22)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .frame(height: 14)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -673,10 +682,12 @@ struct StatusPill: View {
             Text("\(count)")
                 .font(.headline)
                 .foregroundStyle(color)
+                .frame(height: 20)
 
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .frame(height: 14)
         }
         .frame(maxWidth: .infinity)
     }
