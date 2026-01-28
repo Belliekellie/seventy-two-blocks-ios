@@ -3,6 +3,7 @@ import AVFoundation
 
 struct StickyBottomBar: View {
     @EnvironmentObject var blockManager: BlockManager
+    @Binding var showOverview: Bool
     @StateObject private var soundManager = FocusSoundManager.shared
 
     // Settings storage
@@ -11,113 +12,114 @@ struct StickyBottomBar: View {
 
     @State private var showSoundPicker = false
 
-    // Progress calculations
-    private var doneBlocks: Int {
-        blockManager.blocks.filter { $0.status == .done }.count
+    // Worked time
+    private var totalWorkedSeconds: Int {
+        blockManager.blocks.reduce(0) { total, block in
+            guard block.status == .done else { return total }
+            let workSeconds = block.segments
+                .filter { $0.type == .work }
+                .reduce(0) { $0 + $1.seconds }
+            return total + (workSeconds >= 19 * 60 ? 20 * 60 : workSeconds)
+        }
     }
 
-    private var currentSetProgress: Int {
-        doneBlocks % 12
-    }
-
-    private var completedSets: Int {
-        doneBlocks / 12
+    private var workedTimeString: String {
+        if totalWorkedSeconds == 0 { return "0m" }
+        if totalWorkedSeconds < 30 { return "<1m" }
+        let totalMinutes = (totalWorkedSeconds + 30) / 60
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Divider()
 
-            HStack(spacing: 12) {
-                // Completed Blocks
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text("Completed Blocks")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-
-                        Text("\(currentSetProgress)/12")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-
-                        if completedSets > 0 {
-                            Text("• \(completedSets) set\(completedSets == 1 ? "" : "s") done")
-                                .font(.caption2)
-                                .foregroundStyle(.green)
+            HStack(spacing: 0) {
+                // Focus Sounds
+                VStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        // Icon: tappable to toggle play/stop
+                        Button {
+                            if soundManager.isPlaying {
+                                soundManager.stop()
+                            } else {
+                                soundManager.currentSound = preferredFocusSound
+                                soundManager.setVolume(Float(focusSoundVolume))
+                                soundManager.play()
+                            }
+                        } label: {
+                            Image(systemName: soundManager.isPlaying ? "speaker.wave.2.fill" : soundManager.soundIcon(for: preferredFocusSound))
+                                .font(.subheadline)
+                                .foregroundStyle(soundManager.isPlaying ? .blue : .secondary)
+                                .frame(height: 22)
                         }
-                    }
+                        .buttonStyle(.plain)
 
-                    // Progress bar
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 6)
-
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [.green, .blue],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: geo.size.width * CGFloat(currentSetProgress) / 12, height: 6)
+                        // Name + chevron: tappable to open picker
+                        Button {
+                            showSoundPicker = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(soundManager.shortSoundName(for: preferredFocusSound))
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.up")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
-                    .frame(height: 6)
+                    .frame(height: 22)
+                    Text("Focus Sounds")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
 
-                // Focus Sound Controls
-                HStack(spacing: 8) {
-                    // Play/Stop toggle button
-                    Button {
-                        if soundManager.isPlaying {
-                            soundManager.stop()
-                        } else {
-                            soundManager.currentSound = preferredFocusSound
-                            soundManager.setVolume(Float(focusSoundVolume))
-                            soundManager.play()
-                        }
-                    } label: {
-                        Image(systemName: soundManager.isPlaying ? "stop.fill" : "play.fill")
-                            .font(.caption)
-                            .foregroundStyle(soundManager.isPlaying ? .red : .green)
-                            .frame(width: 28, height: 28)
-                            .background(Color.gray.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                Divider()
+                    .frame(height: 36)
+
+                // Worked time
+                VStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.blue)
+                        Text(workedTimeString)
+                            .font(.subheadline.weight(.semibold))
                     }
-                    .buttonStyle(.plain)
-
-                    // Sound picker button
-                    Button {
-                        showSoundPicker = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: soundManager.soundIcon(for: preferredFocusSound))
-                                .font(.caption)
-                                .foregroundStyle(soundManager.isPlaying ? .blue : .secondary)
-
-                            Text(soundManager.soundName(for: preferredFocusSound))
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(soundManager.isPlaying ? .primary : .secondary)
-                                .lineLimit(1)
-
-                            Image(systemName: "chevron.up")
-                                .font(.system(size: 7, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color.gray.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    .buttonStyle(.plain)
+                    .frame(height: 22)
+                    Text("Worked")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity)
+
+                Divider()
+                    .frame(height: 36)
+
+                // Overview
+                Button {
+                    showOverview = true
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.purple)
+                            .frame(height: 22)
+                        Text("Overview")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 24)  // Align with card content
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
             .background(Color(.systemBackground))
         }
         .sheet(isPresented: $showSoundPicker) {
@@ -149,7 +151,6 @@ struct FocusSoundPickerSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                // Now Playing indicator
                 if soundManager.isPlaying {
                     HStack {
                         Image(systemName: "waveform")
@@ -162,32 +163,42 @@ struct FocusSoundPickerSheet: View {
                     .padding(.top)
                 }
 
-                // Sound selection grid
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
                     ForEach(FocusSoundManager.availableSounds, id: \.id) { sound in
+                        let isCurrentlyPlaying = soundManager.isPlaying && soundManager.currentSound == sound.id
                         Button {
-                            selectedSound = sound.id
-                            if soundManager.isPlaying {
-                                soundManager.changeSound(sound.id)
+                            if isCurrentlyPlaying {
+                                // Tapping the playing sound stops it
+                                soundManager.stop()
+                            } else {
+                                // Select and play this sound
+                                selectedSound = sound.id
+                                soundManager.setVolume(Float(volume))
+                                soundManager.play(sound: sound.id)
                             }
                             AudioManager.shared.triggerHapticFeedback(.light)
                         } label: {
                             VStack(spacing: 8) {
                                 ZStack {
                                     Circle()
-                                        .fill(selectedSound == sound.id ? Color.blue : Color.gray.opacity(0.15))
+                                        .fill(isCurrentlyPlaying ? Color.blue : (selectedSound == sound.id ? Color.blue.opacity(0.3) : Color.gray.opacity(0.15)))
                                         .frame(width: 50, height: 50)
 
-                                    Image(systemName: sound.icon)
-                                        .font(.title3)
-                                        .foregroundStyle(selectedSound == sound.id ? .white : .primary)
+                                    if isCurrentlyPlaying {
+                                        Image(systemName: "stop.fill")
+                                            .font(.title3)
+                                            .foregroundStyle(.white)
+                                    } else {
+                                        Image(systemName: sound.icon)
+                                            .font(.title3)
+                                            .foregroundStyle(selectedSound == sound.id ? .blue : .primary)
+                                    }
                                 }
 
                                 Text(sound.name)
                                     .font(.caption)
-                                    .foregroundStyle(selectedSound == sound.id ? .primary : .secondary)
+                                    .foregroundStyle(isCurrentlyPlaying ? .blue : (selectedSound == sound.id ? .primary : .secondary))
 
-                                // Show "Generated" badge for noise types
                                 if sound.isGenerated {
                                     Text("Generated")
                                         .font(.system(size: 8))
@@ -201,7 +212,6 @@ struct FocusSoundPickerSheet: View {
                 .padding(.horizontal)
                 .padding(.top, soundManager.isPlaying ? 0 : 12)
 
-                // Volume slider
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Volume")
@@ -227,30 +237,6 @@ struct FocusSoundPickerSheet: View {
                 .padding(.horizontal)
                 .padding(.top, 8)
 
-                // Play/Stop button
-                Button {
-                    if soundManager.isPlaying {
-                        soundManager.stop()
-                    } else {
-                        soundManager.currentSound = selectedSound
-                        soundManager.setVolume(Float(volume))
-                        soundManager.play()
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: soundManager.isPlaying ? "stop.fill" : "play.fill")
-                        Text(soundManager.isPlaying ? "Stop Sound" : "Play Sound")
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(soundManager.isPlaying ? Color.red : Color.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-
                 Spacer()
             }
             .navigationTitle("Focus Sounds")
@@ -269,7 +255,7 @@ struct FocusSoundPickerSheet: View {
 #Preview {
     VStack {
         Spacer()
-        StickyBottomBar()
+        StickyBottomBar(showOverview: .constant(false))
             .environmentObject(BlockManager())
     }
 }

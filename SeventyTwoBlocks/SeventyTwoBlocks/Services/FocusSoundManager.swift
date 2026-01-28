@@ -281,6 +281,15 @@ final class FocusSoundManager: ObservableObject {
         Self.availableSounds.first { $0.id == id }?.name ?? "Sound"
     }
 
+    /// Shorter name for compact display (e.g. bottom bar)
+    func shortSoundName(for id: String) -> String {
+        switch id {
+        case "ocean": return "Ocean"
+        case "binaural": return "Binaural"
+        default: return soundName(for: id)
+        }
+    }
+
     func soundIcon(for id: String) -> String {
         Self.availableSounds.first { $0.id == id }?.icon ?? "speaker.wave.2.fill"
     }

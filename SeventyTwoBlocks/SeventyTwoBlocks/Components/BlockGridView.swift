@@ -754,6 +754,11 @@ struct BlockItemView: View {
         if isDone || isCurrentBlock || isPlanned || isTimerActiveOnThisBlock {
             return 1.0
         }
+        // Blocks with recorded segments (e.g. stopped mid-way) should show
+        // their fill at full color, not muted
+        if hasSegments {
+            return 1.0
+        }
         return 0.5
     }
 
@@ -880,15 +885,22 @@ struct BlockItemView: View {
 
             // Center: main content (label/status)
             Group {
-                if isMuted && block?.isActivated != true {
+                if isMuted && block?.isActivated != true && !isDone && !hasSegments {
                     Image(systemName: "moon.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(Color.gray.opacity(0.5))
-                } else if isSkipped {
+                } else if isSkipped && !hasSegments {
                     Text(showMotivationalInsults ? getSkippedInsult(blockIndex: blockIndex) : "SKIPPED")
                         .font(.system(size: showMotivationalInsults ? 7 : 8, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(showMotivationalInsults ? Color.red : Color(.label))
+                } else if isSkipped && hasSegments, let doneLabel = doneBlockDisplayLabel {
+                    // Skipped blocks with data should show their label, not "SKIPPED"
+                    Text(doneLabel.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.3)
+                        .lineLimit(1)
+                        .foregroundStyle(labelTextColor)
                 } else if isTimerActiveOnThisBlock {
                     // Show timer label/category (may be more up-to-date than block data)
                     if let timerLabel = timerManager.currentLabel, !timerLabel.isEmpty {

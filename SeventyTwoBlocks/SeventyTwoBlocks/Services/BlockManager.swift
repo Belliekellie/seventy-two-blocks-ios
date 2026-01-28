@@ -628,8 +628,12 @@ final class BlockManager: ObservableObject {
         // Find the block being activated
         guard let block = blocks.first(where: { $0.blockIndex == blockIndex }) else { return }
 
-        // If the block is muted, unmute it (works for any block, not just night blocks)
+        // If the block is muted, unmute it immediately in local state (removes moon icon instantly)
         if block.isMuted {
+            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blocks[localIdx].isMuted = false
+                blocks[localIdx].isActivated = true
+            }
             var activatedBlock = block
             activatedBlock.isMuted = false
             activatedBlock.isActivated = true
@@ -637,28 +641,52 @@ final class BlockManager: ObservableObject {
             print("🌙 Activated muted block \(blockIndex)")
         }
 
-        // Special handling for night blocks: auto-skip previous unused muted night blocks
+        // Special handling for night blocks
         guard nightBlocksRange.contains(blockIndex) else { return }
 
-        // Auto-skip previous unused muted night blocks
-        for prevBlock in blocks {
-            // Only process night blocks before the one being started
-            guard nightBlocksRange.contains(prevBlock.blockIndex) else { continue }
-            guard prevBlock.blockIndex < blockIndex else { continue }
+        // Auto-activate ALL remaining muted night blocks (user is clearly in work mode)
+        // and auto-skip previous unused ones
+        for otherBlock in blocks {
+            guard nightBlocksRange.contains(otherBlock.blockIndex) else { continue }
+            guard otherBlock.blockIndex != blockIndex else { continue }
+            guard otherBlock.isMuted else { continue }
+            guard otherBlock.status != .done && otherBlock.status != .skipped else { continue }
 
-            // Only process muted blocks that haven't been used
-            guard prevBlock.isMuted else { continue }
-            guard prevBlock.status != .done && prevBlock.status != .skipped else { continue }
+            if otherBlock.blockIndex < blockIndex {
+                // Previous night block - check for usage
+                let hasUsage = !otherBlock.segments.isEmpty || otherBlock.usedSeconds > 0 || otherBlock.progress > 0
 
-            // Check if block has any usage
-            let hasUsage = !prevBlock.segments.isEmpty || prevBlock.usedSeconds > 0 || prevBlock.progress > 0
-
-            if !hasUsage {
-                // No usage - skip it
-                var skippedBlock = prevBlock
-                skippedBlock.status = .skipped
-                await saveBlock(skippedBlock)
-                print("🌙 Auto-skipped unused night block \(prevBlock.blockIndex)")
+                if hasUsage {
+                    // Has data - mark as done, not skipped
+                    if let localIdx = blocks.firstIndex(where: { $0.blockIndex == otherBlock.blockIndex }) {
+                        blocks[localIdx].status = .done
+                        blocks[localIdx].isMuted = false
+                        blocks[localIdx].isActivated = true
+                    }
+                    var doneBlock = otherBlock
+                    doneBlock.status = .done
+                    doneBlock.isMuted = false
+                    doneBlock.isActivated = true
+                    await saveBlock(doneBlock)
+                    print("🌙 Auto-marked night block \(otherBlock.blockIndex) as DONE (has data)")
+                } else {
+                    // No usage - skip it
+                    var skippedBlock = otherBlock
+                    skippedBlock.status = .skipped
+                    await saveBlock(skippedBlock)
+                    print("🌙 Auto-skipped unused night block \(otherBlock.blockIndex)")
+                }
+            } else {
+                // Future night block - activate it (remove moon) so user can freely use them
+                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == otherBlock.blockIndex }) {
+                    blocks[localIdx].isMuted = false
+                    blocks[localIdx].isActivated = true
+                }
+                var activatedBlock = otherBlock
+                activatedBlock.isMuted = false
+                activatedBlock.isActivated = true
+                await saveBlock(activatedBlock)
+                print("🌙 Auto-activated future night block \(otherBlock.blockIndex)")
             }
         }
     }
