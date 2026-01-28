@@ -186,14 +186,14 @@ struct BlockSheetView: View {
                     }
                 }
 
-                // Time breakdown at top for past blocks (most important info)
-                if isPastBlock || isViewingPastDay {
+                // Time breakdown at top for past/done blocks (most important info)
+                if isPastBlock || isViewingPastDay || block.status == .done || block.status == .skipped {
                     Section {
                         TimeBreakdownView(
                             block: block,
                             categories: blockManager.categories,
                             categoryColor: categoryColor,
-                            isPastBlock: isPastBlock || isViewingPastDay,
+                            isPastBlock: true,
                             isTimerRunning: false,
                             onSaveSegments: { updatedSegments in
                                 Task {
@@ -210,8 +210,8 @@ struct BlockSheetView: View {
                     }
                 }
 
-                // Timer section (hidden for past blocks — no useful info to show)
-                if !isPastBlock && !isViewingPastDay {
+                // Timer section (hidden for past/done/skipped blocks — no useful info to show)
+                if !isPastBlock && !isViewingPastDay && block.status != .done && block.status != .skipped {
                 Section("Timer") {
                     VStack(spacing: 16) {
                         // Time display
@@ -289,12 +289,6 @@ struct BlockSheetView: View {
                                     .foregroundStyle(.red)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
-                            } else if isViewingToday && timerManager.isActive && timerManager.currentBlockIndex != block.blockIndex {
-                                // Timer running on different block (only show when viewing today)
-                                Text("Timer running on Block \(Block.displayBlockNumber(timerManager.currentBlockIndex ?? 0))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
                             } else if isViewingToday && !timerManager.isActive && timerManager.currentBlockIndex == block.blockIndex {
                                 // Paused (only applies when viewing today)
                                 Button(action: {
@@ -430,7 +424,7 @@ struct BlockSheetView: View {
                         }
                     }
                 }
-                } // end if !isPastBlock && !isViewingPastDay
+                } // end if !isPastBlock && !isViewingPastDay && !done/skipped
 
                 // Category section
                 Section {
@@ -698,9 +692,9 @@ struct BlockSheetView: View {
                         .foregroundStyle(label.count >= maxLabelLength ? .orange : .secondary)
                 }
 
-                // Time breakdown - show after label section (only for non-past blocks;
-                // past blocks have it at the top of the sheet)
-                if !isPastBlock && !isViewingPastDay {
+                // Time breakdown - show after label section (only for active/future blocks;
+                // past/done/skipped blocks have it at the top of the sheet)
+                if !isPastBlock && !isViewingPastDay && block.status != .done && block.status != .skipped {
                     Section {
                         TimeBreakdownView(
                             block: block,

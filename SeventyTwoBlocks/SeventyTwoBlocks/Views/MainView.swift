@@ -76,9 +76,8 @@ struct MainView: View {
                 // SCROLLABLE CONTENT
                 ScrollView {
                     VStack(spacing: 12) {
-                        // Stats Card (Worked + Overview)
-                        // Extra padding to align with block colors
-                        StatsCardView(showOverview: $showOverview)
+                        // Set progress bar
+                        SetProgressBarView()
                             .padding(.horizontal, 4)
 
                         // Block grid - 72 blocks for the day
@@ -99,9 +98,9 @@ struct MainView: View {
                         Spacer().frame(height: 16)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
                     .padding(.bottom, 16)
                 }
+                .background(Color(.systemBackground))
 
                 // STICKY BOTTOM SECTION - Timer (when active) + Bottom Bar
                 // Connected together with no gap
@@ -109,7 +108,7 @@ struct MainView: View {
                     if timerManager.isActive {
                         FloatingTimerBar()
                     }
-                    StickyBottomBar()
+                    StickyBottomBar(showOverview: $showOverview)
                 }
             }
 

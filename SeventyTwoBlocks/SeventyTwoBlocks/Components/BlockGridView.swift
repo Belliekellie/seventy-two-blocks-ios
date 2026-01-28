@@ -501,6 +501,10 @@ struct BlockItemView: View {
         }
 
         if isSkipped {
+            // Skipped blocks with recorded data should show their category color
+            if hasSegments, let color = categoryColor {
+                return color
+            }
             return Color.gray.opacity(0.1)
         }
 
@@ -669,7 +673,20 @@ struct BlockItemView: View {
         return segments.contains { $0.type == .work && $0.seconds > 0 }
     }
 
+    /// Total break seconds from segments
+    private var totalBreakSeconds: Int {
+        guard let segments = block?.segments else { return 0 }
+        return segments.filter { $0.type == .break }.reduce(0) { $0 + $1.seconds }
+    }
+
+    /// Total work seconds from segments
+    private var totalWorkSeconds: Int {
+        guard let segments = block?.segments else { return 0 }
+        return segments.filter { $0.type == .work }.reduce(0) { $0 + $1.seconds }
+    }
+
     /// Build display label for done blocks with +N suffix for additional categories
+    /// The dominant activity (work or break by time) always wins the block label
     private var doneBlockDisplayLabel: String? {
         // If block has NO work segments, it's break-only — just show "Break"
         if !hasWorkSegments {
@@ -679,7 +696,17 @@ struct BlockItemView: View {
             return nil
         }
 
-        // Block has work segments - get the primary work label
+        // If break is the dominant activity (more time than work), show "Break"
+        // with +N for work categories that had meaningful time
+        if hasBreakSegments && totalBreakSeconds > totalWorkSeconds {
+            let meaningfulWorkCategories = distinctMeaningfulCategoryCount
+            if meaningfulWorkCategories > 0 {
+                return "Break +\(meaningfulWorkCategories)"
+            }
+            return "Break"
+        }
+
+        // Work is dominant - get the primary work label
         // Use dominant label from segments (most time), then block label, then category name
         let dominantLabel = dominantLabelFromSegments
         let blockLabel = block?.label?.isEmpty == false ? block?.label : nil
@@ -696,12 +723,15 @@ struct BlockItemView: View {
             return nil
         }
 
-        // Add +N suffix showing how many ADDITIONAL categories with meaningful time (60s+)
+        // Add +N suffix showing how many ADDITIONAL categories/types with meaningful time (60s+)
         // Brief spillover (<60s) from continuing into a block is ignored
-        // Only counts distinct work categories, not label changes within same category
-        let extraCategories = distinctMeaningfulCategoryCount - 1
-        if extraCategories > 0 {
-            result += " +\(extraCategories)"
+        var extraCount = distinctMeaningfulCategoryCount - 1
+        // Count break as an extra category if it had meaningful time
+        if hasBreakSegments && totalBreakSeconds >= meaningfulCategoryThreshold {
+            extraCount += 1
+        }
+        if extraCount > 0 {
+            result += " +\(extraCount)"
         }
 
         return result

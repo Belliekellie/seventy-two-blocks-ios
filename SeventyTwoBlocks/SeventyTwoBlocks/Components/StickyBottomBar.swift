@@ -36,89 +36,94 @@ struct StickyBottomBar: View {
         VStack(spacing: 0) {
             Divider()
 
-            HStack(spacing: 0) {
-                // Focus Sounds
-                VStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        // Icon: tappable to toggle play/stop
-                        Button {
-                            if soundManager.isPlaying {
-                                soundManager.stop()
-                            } else {
-                                soundManager.currentSound = preferredFocusSound
-                                soundManager.setVolume(Float(focusSoundVolume))
-                                soundManager.play()
-                            }
-                        } label: {
-                            Image(systemName: soundManager.isPlaying ? "speaker.wave.2.fill" : soundManager.soundIcon(for: preferredFocusSound))
-                                .font(.subheadline)
-                                .foregroundStyle(soundManager.isPlaying ? .blue : .secondary)
-                                .frame(height: 22)
-                        }
-                        .buttonStyle(.plain)
+            GeometryReader { geo in
+                let columnWidth = (geo.size.width - 40) / 3 // 40 = horizontal padding (20 * 2)
 
-                        // Name + chevron: tappable to open picker
-                        Button {
-                            showSoundPicker = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(soundManager.shortSoundName(for: preferredFocusSound))
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                                Image(systemName: "chevron.up")
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .frame(height: 22)
-                    Text("Focus Sounds")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider()
-                    .frame(height: 36)
-
-                // Worked time
-                VStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.blue)
-                        Text(workedTimeString)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .frame(height: 22)
-                    Text("Worked")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider()
-                    .frame(height: 36)
-
-                // Overview
-                Button {
-                    showOverview = true
-                } label: {
+                HStack(spacing: 0) {
+                    // Focus Sounds (left)
                     VStack(spacing: 4) {
-                        Image(systemName: "chart.bar.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.purple)
-                            .frame(height: 22)
-                        Text("Overview")
+                        HStack(spacing: 4) {
+                            Button {
+                                if soundManager.isPlaying {
+                                    soundManager.stop()
+                                } else {
+                                    soundManager.currentSound = preferredFocusSound
+                                    soundManager.setVolume(Float(focusSoundVolume))
+                                    soundManager.play()
+                                }
+                            } label: {
+                                Image(systemName: soundManager.isPlaying ? "speaker.wave.2.fill" : soundManager.soundIcon(for: preferredFocusSound))
+                                    .font(.subheadline)
+                                    .foregroundStyle(soundManager.isPlaying ? .blue : .secondary)
+                                    .frame(height: 22)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                showSoundPicker = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(soundManager.shortSoundName(for: preferredFocusSound))
+                                        .font(.subheadline.weight(.semibold))
+                                        .lineLimit(1)
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 8, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(height: 22)
+                        Text("Focus Sounds")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(width: columnWidth)
+
+                    Divider()
+                        .frame(height: 36)
+
+                    // Overview (center)
+                    Button {
+                        showOverview = true
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "chart.bar.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.purple)
+                                .frame(height: 22)
+                            Text("Overview")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(width: columnWidth)
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider()
+                        .frame(height: 36)
+
+                    // Worked time (right)
+                    VStack(spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.blue)
+                            Text(workedTimeString)
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .frame(height: 22)
+                        Text("Worked")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(width: columnWidth)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.vertical, 12)
+            .frame(height: 42)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
             .padding(.horizontal, 20)
             .background(Color(.systemBackground))
         }
