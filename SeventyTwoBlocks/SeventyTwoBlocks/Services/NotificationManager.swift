@@ -140,6 +140,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             options: [.foreground]
         )
 
+        let newBlockAction = UNNotificationAction(
+            identifier: "NEW_BLOCK",
+            title: "New Block",
+            options: [.foreground]
+        )
+
         let stopAction = UNNotificationAction(
             identifier: "STOP",
             title: "Stop",
@@ -148,7 +154,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
         let timerCompleteCategory = UNNotificationCategory(
             identifier: "TIMER_COMPLETE",
-            actions: [continueAction, takeBreakAction, stopAction],
+            actions: [continueAction, takeBreakAction, newBlockAction, stopAction],
             intentIdentifiers: [],
             options: []
         )
@@ -194,6 +200,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             pendingAction = "takeBreak"
         case "STOP":
             pendingAction = "stop"
+        case "NEW_BLOCK":
+            pendingAction = "newBlock"
         case UNNotificationDefaultActionIdentifier:
             // User tapped the notification body — app opens, no specific action
             break

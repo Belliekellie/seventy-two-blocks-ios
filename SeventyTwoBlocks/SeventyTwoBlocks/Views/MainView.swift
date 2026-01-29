@@ -124,6 +124,7 @@ struct MainView: View {
                     category: timerManager.currentCategory,
                     label: timerManager.currentLabel,
                     totalDoneBlocks: completedBlocks,
+                    timerEndedAt: timerManager.timerCompletedAt ?? Date(),
                     onContinue: handleContinueWork,
                     onTakeBreak: handleTakeBreak,
                     onStartNewBlock: handleStartNewBlock,
@@ -140,6 +141,7 @@ struct MainView: View {
 
                 BreakCompleteDialog(
                     blockIndex: timerManager.currentBlockIndex ?? 0,
+                    timerEndedAt: timerManager.timerCompletedAt ?? Date(),
                     onContinueBreak: handleExtendBreak,
                     onBackToWork: handleBackToWork,
                     onStartNewBlock: handleStartNewBlock,
@@ -224,7 +226,15 @@ struct MainView: View {
             // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
             timerManager.restoreFromBackground()
 
-            // 2. Clear badge
+            // 2. Update widget data on foreground
+            WidgetDataProvider.shared.updateWidgetData(
+                blocks: blockManager.blocks,
+                categories: blockManager.categories,
+                timerManager: timerManager,
+                goalManager: goalManager
+            )
+
+            // 3. Clear badge
             NotificationManager.shared.clearBadge()
 
             // 3. If user tapped a notification action, execute it now
@@ -232,10 +242,39 @@ struct MainView: View {
             if let action = NotificationManager.shared.pendingAction {
                 NotificationManager.shared.pendingAction = nil
                 switch action {
-                case "continue": handleContinueWork()
+                case "continue":
+                    // User explicitly chose Continue — retroactively fill in blocks they worked
+                    if let completedAt = timerManager.timerCompletedAt {
+                        let category = timerManager.lastWorkCategory ?? timerManager.currentCategory
+                        let label = timerManager.lastWorkLabel ?? timerManager.currentLabel
+                        retroactivelyCompleteBlocks(completedAt: completedAt, category: category, label: label)
+                    }
+                    handleContinueWork()
                 case "takeBreak": handleTakeBreak()
+                case "newBlock":
+                    timerManager.dismissTimerComplete()
+                    timerManager.dismissBreakComplete()
+                    WidgetDataProvider.shared.endLiveActivity()
+                    // Open the blocksheet for the current block
+                    selectedBlockIndex = currentBlockIndex
                 case "stop": handleStop()
                 default: break
+                }
+            } else {
+                // 3b. No notification action — user just opened the app.
+                //     If they've been away a while (> 30s), show a FRESH dialog
+                //     so they can consciously choose what to do.
+                //     Don't auto-fill blocks — they might not have been working.
+                if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
+                    if Date().timeIntervalSince(completedAt) > 30 {
+                        // Reset to now so the dialog shows a fresh 25s countdown
+                        timerManager.timerCompletedAt = Date()
+                    }
+                    // If <= 30s, the dialog's existing countdown handles it naturally
+                } else if timerManager.showBreakComplete, let completedAt = timerManager.timerCompletedAt {
+                    if Date().timeIntervalSince(completedAt) > 35 {
+                        timerManager.timerCompletedAt = Date()
+                    }
                 }
             }
 
@@ -249,6 +288,13 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             timerManager.saveStateForBackground()
+            // Persist widget data for widget access while backgrounded
+            WidgetDataProvider.shared.updateWidgetData(
+                blocks: blockManager.blocks,
+                categories: blockManager.categories,
+                timerManager: timerManager,
+                goalManager: goalManager
+            )
         }
         .onChange(of: selectedDate) { _, newDate in
             Task {
@@ -289,6 +335,49 @@ struct MainView: View {
             Task {
                 await saveSnapshot(blockIndex: blockIndex, date: date, snapshot: snapshot)
             }
+        }
+
+        // Widget update callback: called on timer start/stop/complete, category change, progress milestones
+        timerManager.onWidgetUpdate = { [self] in
+            WidgetDataProvider.shared.updateWidgetData(
+                blocks: blockManager.blocks,
+                categories: blockManager.categories,
+                timerManager: timerManager,
+                goalManager: goalManager
+            )
+            // Update Live Activity state
+            if timerManager.isActive, let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt {
+                let categoryColor = blockManager.categories.first { $0.id == timerManager.currentCategory }?.color
+                WidgetDataProvider.shared.updateLiveActivity(
+                    timerEndAt: endAt,
+                    timerStartedAt: startedAt,
+                    category: timerManager.currentCategory,
+                    categoryColor: categoryColor,
+                    label: timerManager.currentLabel,
+                    progress: timerManager.progressPercent / 100.0,
+                    isBreak: timerManager.isBreak
+                )
+            } else if timerManager.showTimerComplete || timerManager.showBreakComplete {
+                // Timer completed - update Live Activity to show auto-continue countdown
+                let autoContinueSeconds: TimeInterval = timerManager.showBreakComplete ? 30 : 25
+                if let completedAt = timerManager.timerCompletedAt {
+                    let autoContinueEndAt = completedAt.addingTimeInterval(autoContinueSeconds)
+                    WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                        autoContinueEndAt: autoContinueEndAt,
+                        isBreak: timerManager.showBreakComplete
+                    )
+                }
+            }
+        }
+
+        // Blocks changed callback: called on load/save/reload
+        blockManager.onBlocksChanged = { [self] in
+            WidgetDataProvider.shared.updateWidgetData(
+                blocks: blockManager.blocks,
+                categories: blockManager.categories,
+                timerManager: timerManager,
+                goalManager: goalManager
+            )
         }
     }
 
@@ -416,6 +505,22 @@ struct MainView: View {
         // the timer to restart in a loop (the continuation handler gets re-triggered)
     }
 
+    // MARK: - Widget / Live Activity Helpers
+
+    private func startWidgetLiveActivity(blockIndex: Int, isBreak: Bool, endAt: Date, category: String?, label: String?) {
+        let categoryColor = blockManager.categories.first { $0.id == category }?.color
+        WidgetDataProvider.shared.startLiveActivity(
+            blockIndex: blockIndex,
+            isBreak: isBreak,
+            timerEndAt: endAt,
+            timerStartedAt: Date(),
+            category: category,
+            categoryColor: categoryColor,
+            label: label,
+            progress: 0
+        )
+    }
+
     // MARK: - Dialog Actions
 
     private func handleContinueWork() {
@@ -454,6 +559,15 @@ struct MainView: View {
             existingSegments: existingSegments
         )
 
+        // Start Live Activity
+        startWidgetLiveActivity(
+            blockIndex: nextBlockIndex,
+            isBreak: false,
+            endAt: Block.blockEndDate(for: nextBlockIndex),
+            category: category,
+            label: label
+        )
+
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
         Task {
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
@@ -480,6 +594,15 @@ struct MainView: View {
             nextBlockIndex: blockIndex,
             date: todayString,
             isBreakMode: true,
+            category: nil,
+            label: "Break"
+        )
+
+        // Start Live Activity for break
+        startWidgetLiveActivity(
+            blockIndex: blockIndex,
+            isBreak: true,
+            endAt: Date().addingTimeInterval(300),
             category: nil,
             label: "Break"
         )
@@ -574,6 +697,15 @@ struct MainView: View {
             existingSegments: existingSegments
         )
 
+        // Start Live Activity
+        startWidgetLiveActivity(
+            blockIndex: nextBlockIndex,
+            isBreak: false,
+            endAt: Block.blockEndDate(for: nextBlockIndex),
+            category: category,
+            label: label
+        )
+
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
         Task {
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
@@ -591,10 +723,106 @@ struct MainView: View {
         NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
     }
 
+    // MARK: - Retroactive Block Completion
+
+    /// When the user returns to the app after an extended absence, retroactively mark
+    /// all blocks that would have been completed via auto-continue as `.done`.
+    /// Each block ends at its calendar boundary, then after a 25s delay the next starts.
+    private func retroactivelyCompleteBlocks(completedAt: Date, category: String?, label: String?) {
+        let now = Date()
+        let calendar = Calendar.current
+        let autoContinueDelay: TimeInterval = 25
+
+        // When would the first auto-continue have fired?
+        var simulatedTime = completedAt.addingTimeInterval(autoContinueDelay)
+
+        // Collect blocks to retroactively complete
+        var blocksToComplete: [Int] = []
+
+        while simulatedTime < now {
+            // Which block would we be in at simulatedTime?
+            let startOfDay = calendar.startOfDay(for: simulatedTime)
+            let minutesSinceStart = Int(simulatedTime.timeIntervalSince(startOfDay)) / 60
+            let blockIndex = min(71, minutesSinceStart / 20)
+
+            // When does this block end?
+            let blockEnd = Block.blockEndDate(for: blockIndex, on: simulatedTime)
+
+            if blockEnd <= now {
+                // This entire block would have completed during the absence
+                blocksToComplete.append(blockIndex)
+                blocksWithTimerUsage.insert(blockIndex)
+                // Next auto-continue fires after this block's boundary + delay
+                simulatedTime = blockEnd.addingTimeInterval(autoContinueDelay)
+            } else {
+                // This block is still in progress — handleContinueWork will start it
+                break
+            }
+
+            // Don't loop past the last block of the day
+            if blockIndex >= 71 { break }
+        }
+
+        guard !blocksToComplete.isEmpty else { return }
+        print("🔄 Retroactively completing \(blocksToComplete.count) blocks: \(blocksToComplete)")
+
+        let dateStr = todayString
+
+        // 1. Update local state immediately so the UI reflects the completed blocks
+        for blockIndex in blocksToComplete {
+            if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex && $0.date == dateStr }) {
+                blockManager.blocks[idx].status = .done
+                blockManager.blocks[idx].category = category
+                blockManager.blocks[idx].label = label
+                blockManager.blocks[idx].usedSeconds = 1200
+                blockManager.blocks[idx].progress = 100.0
+                blockManager.blocks[idx].segments = [BlockSegment(type: .work, seconds: 1200, category: category, label: label)]
+                if blockManager.blocks[idx].isMuted {
+                    blockManager.blocks[idx].isMuted = false
+                    blockManager.blocks[idx].isActivated = true
+                }
+            }
+        }
+
+        // 2. Persist to database asynchronously
+        Task {
+            let userId = blockManager.blocks.first?.userId ?? ""
+            for blockIndex in blocksToComplete {
+                if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == dateStr }) {
+                    await blockManager.saveBlock(block)
+                } else {
+                    // Block doesn't exist in local array yet — create it
+                    let newBlock = Block(
+                        id: UUID().uuidString,
+                        userId: userId,
+                        date: dateStr,
+                        blockIndex: blockIndex,
+                        isMuted: false,
+                        isActivated: true,
+                        category: category,
+                        label: label,
+                        note: nil,
+                        status: .done,
+                        progress: 100.0,
+                        breakProgress: 0,
+                        runs: nil,
+                        activeRunSnapshot: nil,
+                        segments: [BlockSegment(type: .work, seconds: 1200, category: category, label: label)],
+                        usedSeconds: 1200,
+                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                        updatedAt: ISO8601DateFormatter().string(from: Date())
+                    )
+                    await blockManager.saveBlock(newBlock)
+                }
+            }
+        }
+    }
+
     private func handleStop() {
         timerManager.dismissTimerComplete()
         timerManager.dismissBreakComplete()
         NotificationManager.shared.cancelAllNotifications()
+        WidgetDataProvider.shared.endLiveActivity()
     }
 
     private func handleSkipNextBlock() {
@@ -674,6 +902,15 @@ struct MainView: View {
             category: block.category,
             label: block.label,
             existingSegments: block.segments
+        )
+
+        // Start Live Activity
+        startWidgetLiveActivity(
+            blockIndex: block.blockIndex,
+            isBreak: false,
+            endAt: Block.blockEndDate(for: block.blockIndex),
+            category: block.category,
+            label: block.label
         )
 
         // Schedule notification at actual block end time

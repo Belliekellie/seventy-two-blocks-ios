@@ -5,6 +5,7 @@ struct TimerCompleteDialog: View {
     let category: String?
     let label: String?
     let totalDoneBlocks: Int  // For set celebration calculation
+    let timerEndedAt: Date    // When the timer actually completed (for epoch-based countdown)
     let onContinue: () -> Void
     let onTakeBreak: () -> Void
     let onStartNewBlock: () -> Void
@@ -280,11 +281,18 @@ struct TimerCompleteDialog: View {
     }
 
     private func startCountdown() {
-        countdown = 25
+        // Epoch-based countdown: survives app backgrounding
+        let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
+        countdown = max(0, 25 - elapsed)
+        if countdown <= 0 {
+            onContinue()
+            return
+        }
         autoContinueTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            if countdown > 0 {
-                countdown -= 1
-            } else {
+            let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
+            let remaining = max(0, 25 - elapsed)
+            countdown = remaining
+            if remaining <= 0 {
                 stopCountdown()
                 onContinue()
             }
@@ -307,6 +315,7 @@ struct TimerCompleteDialog: View {
             category: "work",
             label: "Building iOS App",
             totalDoneBlocks: 5,
+            timerEndedAt: Date(),
             onContinue: {},
             onTakeBreak: {},
             onStartNewBlock: {},
@@ -327,6 +336,7 @@ struct TimerCompleteDialog: View {
             category: "work",
             label: "Building iOS App",
             totalDoneBlocks: 12,  // Triggers celebration
+            timerEndedAt: Date(),
             onContinue: {},
             onTakeBreak: {},
             onStartNewBlock: {},

@@ -11,6 +11,8 @@ final class BlockManager: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
+    var onBlocksChanged: (() -> Void)?
+
     private var currentDate: String = ""
     private var categoriesLoaded = false
     private var categoriesAreDefaults = false  // Track if we fell back to defaults
@@ -65,6 +67,7 @@ final class BlockManager: ObservableObject {
             }
 
             blocks = fullBlocks
+            onBlocksChanged?()
         } catch {
             self.error = error.localizedDescription
             print("Error loading blocks: \(error)")
@@ -200,6 +203,7 @@ final class BlockManager: ObservableObject {
                 blocks[index] = blockToSave
             }
 
+            onBlocksChanged?()
             print("✅ Saved block \(blockToSave.blockIndex) successfully")
         } catch {
             self.error = error.localizedDescription

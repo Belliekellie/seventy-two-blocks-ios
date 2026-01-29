@@ -26,6 +26,7 @@ final class TimerManager: ObservableObject {
     // Completion state
     @Published var showTimerComplete = false
     @Published var showBreakComplete = false
+    @Published var timerCompletedAt: Date?
 
     // MARK: - Internal State
     private var startedAt: Date?
@@ -59,8 +60,16 @@ final class TimerManager: ObservableObject {
     // initialTime is passed so caller can detect natural completion (secondsUsed ~= initialTime)
     var onTimerComplete: ((Int, String, Bool, Int, Int, [BlockSegment]) -> Void)?
     var onSaveSnapshot: ((Int, String, Run) -> Void)?  // blockIndex, date, snapshot
+    var onWidgetUpdate: (() -> Void)?
+
+    // Widget update throttling: only notify at 25% progress milestones
+    private var lastReportedProgressQuarter: Int = -1
 
     // MARK: - Computed Properties
+
+    /// Read-only access to endAt for widget countdown
+    var exposedEndAt: Date? { endAt }
+    var exposedStartedAt: Date? { startedAt }
 
     var secondsUsed: Int {
         return max(0, initialTime - timeLeft)
@@ -228,6 +237,10 @@ final class TimerManager: ObservableObject {
         // Start autosave timer (every 5 seconds)
         startAutosaveTimer()
 
+        // Notify widget of timer start
+        lastReportedProgressQuarter = -1
+        onWidgetUpdate?()
+
         print("⏱️ Timer started for block \(blockIndex) - initialTime: \(actualDuration)s, preciseInterval: \(String(format: "%.3f", preciseInterval))s, isBreak: \(isBreakMode), existingSegments: \(existingSegments.count), previousProportion: \(String(format: "%.1f%%", previousVisualProportion * 100)), sessionScaleFactor: \(String(format: "%.8f", sessionScaleFactor))")
     }
 
@@ -256,6 +269,9 @@ final class TimerManager: ObservableObject {
             // Pass ALL segments (previous + live) to the callback
             onTimerComplete?(blockIndex, date, wasBreak, used, sessionInitialTime, finalSegments)
         }
+
+        // Notify widget of timer stop
+        onWidgetUpdate?()
 
         print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count) (previous: \(previousSegments.count), live: \(liveSegments.count))")
     }
@@ -305,6 +321,7 @@ final class TimerManager: ObservableObject {
         isBreak = true
         breakStartTime = Date()
 
+        onWidgetUpdate?()
         print("⏱️ Switched to break mode, preserved work context: \(lastWorkCategory ?? "nil") / \(lastWorkLabel ?? "nil")")
     }
 
@@ -326,6 +343,7 @@ final class TimerManager: ObservableObject {
         isBreak = false
         breakStartTime = nil
 
+        onWidgetUpdate?()
         print("⏱️ Switched to work mode, restored work context: \(currentCategory ?? "nil") / \(currentLabel ?? "nil")")
     }
 
@@ -364,6 +382,7 @@ final class TimerManager: ObservableObject {
         currentCategory = newCategory
         currentLabel = newLabel
 
+        onWidgetUpdate?()
         print("⏱️ Updated category: \(newCategory ?? "nil"), label: \(newLabel ?? "nil")")
     }
 
@@ -391,6 +410,7 @@ final class TimerManager: ObservableObject {
         currentSegmentType = .work
         sessionScaleFactor = 1.0 / 1200.0
         previousVisualProportion = 0
+        lastReportedProgressQuarter = -1
     }
 
     private func startTickTimer() {
@@ -430,6 +450,15 @@ final class TimerManager: ObservableObject {
             breakProgress = Double(breakElapsed) / 300.0 * 100  // 5 min = 300s
         }
 
+        // Throttled widget update at 25% progress milestones
+        if initialTime > 0 {
+            let progressQuarter = Int(progress / 25)
+            if progressQuarter != lastReportedProgressQuarter {
+                lastReportedProgressQuarter = progressQuarter
+                onWidgetUpdate?()
+            }
+        }
+
         // Debug: Show fill proportion when close to end
         let fillProportion = Double(secondsUsed) * sessionScaleFactor + previousVisualProportion
         if fillProportion > 0.95 {
@@ -444,6 +473,9 @@ final class TimerManager: ObservableObject {
 
     private func handleTimerComplete() {
         print("⏱️ handleTimerComplete called - isActive: \(isActive)")
+        // Capture actual end time BEFORE state changes
+        // If timer expired while backgrounded, endAt is in the past (when it actually expired)
+        let actualCompletionTime = endAt ?? Date()
         guard isActive else {
             print("⏱️ handleTimerComplete SKIPPED - isActive was false!")
             return
@@ -483,6 +515,13 @@ final class TimerManager: ObservableObject {
         } else {
             showTimerComplete = true
         }
+
+        // Record completion time for epoch-based auto-continue countdown
+        // Uses actual end time, not current time, so backgrounded duration is accounted for
+        timerCompletedAt = actualCompletionTime
+
+        // Notify widget of timer completion
+        onWidgetUpdate?()
 
         print("⏱️ Timer complete! Was break: \(wasBreak), segments: \(finalSegments.count) (previous: \(previousSegments.count), live: \(liveSegments.count))")
     }
@@ -589,11 +628,13 @@ final class TimerManager: ObservableObject {
 
     func dismissTimerComplete() {
         showTimerComplete = false
+        timerCompletedAt = nil
         resetState()
     }
 
     func dismissBreakComplete() {
         showBreakComplete = false
+        timerCompletedAt = nil
         resetState()
     }
 
@@ -611,6 +652,7 @@ final class TimerManager: ObservableObject {
         sessionScaleFactor = 1.0 / 1200.0
         progress = 0
         breakProgress = 0
+        lastReportedProgressQuarter = -1
     }
 
     // MARK: - Continue Actions

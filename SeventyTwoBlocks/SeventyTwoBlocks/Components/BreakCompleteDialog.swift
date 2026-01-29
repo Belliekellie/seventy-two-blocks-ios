@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BreakCompleteDialog: View {
     let blockIndex: Int
+    let timerEndedAt: Date    // When the break actually completed (for epoch-based countdown)
     let onContinueBreak: () -> Void
     let onBackToWork: () -> Void
     let onStartNewBlock: () -> Void
@@ -144,11 +145,18 @@ struct BreakCompleteDialog: View {
     }
 
     private func startCountdown() {
-        countdown = 30
+        // Epoch-based countdown: survives app backgrounding
+        let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
+        countdown = max(0, 30 - elapsed)
+        if countdown <= 0 {
+            onContinueBreak()
+            return
+        }
         autoExtendTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            if countdown > 0 {
-                countdown -= 1
-            } else {
+            let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
+            let remaining = max(0, 30 - elapsed)
+            countdown = remaining
+            if remaining <= 0 {
                 stopCountdown()
                 onContinueBreak()
             }
@@ -168,6 +176,7 @@ struct BreakCompleteDialog: View {
 
         BreakCompleteDialog(
             blockIndex: 30,
+            timerEndedAt: Date(),
             onContinueBreak: {},
             onBackToWork: {},
             onStartNewBlock: {},
