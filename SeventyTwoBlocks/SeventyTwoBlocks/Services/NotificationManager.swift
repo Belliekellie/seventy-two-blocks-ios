@@ -1,11 +1,18 @@
 import UserNotifications
 
-final class NotificationManager {
+final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
 
     private let notificationCenter = UNUserNotificationCenter.current()
 
-    private init() {}
+    /// Stores the notification action ID until the foreground handler reads it.
+    /// Checked synchronously after restoreFromBackground() to avoid race conditions.
+    var pendingAction: String?
+
+    private override init() {
+        super.init()
+        notificationCenter.delegate = self
+    }
 
     // MARK: - Permission
 
@@ -170,5 +177,39 @@ final class NotificationManager {
             timerCompleteCategory,
             breakReminderCategory
         ])
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    /// Called when the user taps a notification or an action button while the app is in the background.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        switch response.actionIdentifier {
+        case "CONTINUE":
+            pendingAction = "continue"
+        case "TAKE_BREAK":
+            pendingAction = "takeBreak"
+        case "STOP":
+            pendingAction = "stop"
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped the notification body — app opens, no specific action
+            break
+        default:
+            break
+        }
+        completionHandler()
+    }
+
+    /// Called when a notification arrives while the app is in the foreground.
+    /// Suppress it — the in-app completion dialog handles this case.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([])
     }
 }

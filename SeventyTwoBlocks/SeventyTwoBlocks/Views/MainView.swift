@@ -221,13 +221,34 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Run auto-skip when app comes to foreground
+            // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
+            timerManager.restoreFromBackground()
+
+            // 2. Clear badge
+            NotificationManager.shared.clearBadge()
+
+            // 3. If user tapped a notification action, execute it now
+            //    (this dismisses any dialog that restoreFromBackground showed)
+            if let action = NotificationManager.shared.pendingAction {
+                NotificationManager.shared.pendingAction = nil
+                switch action {
+                case "continue": handleContinueWork()
+                case "takeBreak": handleTakeBreak()
+                case "stop": handleStop()
+                default: break
+                }
+            }
+
+            // 4. Reload blocks and auto-skip (existing behavior)
             if isToday {
                 Task {
                     await blockManager.reloadBlocks()
                     await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            timerManager.saveStateForBackground()
         }
         .onChange(of: selectedDate) { _, newDate in
             Task {

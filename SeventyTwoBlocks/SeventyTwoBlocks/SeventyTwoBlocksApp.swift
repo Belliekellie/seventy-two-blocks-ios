@@ -15,6 +15,11 @@ struct SeventyTwoBlocksApp: App {
     @StateObject private var goalManager = GoalManager()
     @AppStorage("appearanceMode") private var appearanceMode: Int = 2  // 1 = light, 2 = dark
 
+    init() {
+        // Ensure the notification delegate is registered before any notifications arrive
+        _ = NotificationManager.shared
+    }
+
     private var colorScheme: ColorScheme {
         appearanceMode == 1 ? .light : .dark
     }

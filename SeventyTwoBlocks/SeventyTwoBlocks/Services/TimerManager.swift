@@ -558,6 +558,33 @@ final class TimerManager: ObservableObject {
         onSaveSnapshot?(blockIndex, date, snapshot)
     }
 
+    // MARK: - Background Recovery
+
+    /// Called when app returns to foreground. If the timer expired while backgrounded,
+    /// triggers completion. Otherwise recalculates timeLeft and restarts tick timers.
+    func restoreFromBackground() {
+        guard isActive, let endAt = endAt else { return }
+
+        if endAt <= Date() {
+            // Timer expired while app was suspended
+            handleTimerComplete()
+        } else {
+            // Timer still running — recalculate and restart timers
+            timeLeft = max(0, Int(endAt.timeIntervalSinceNow))
+            if initialTime > 0 {
+                progress = Double(secondsUsed) / Double(initialTime) * 100
+            }
+            startTickTimer()
+            startAutosaveTimer()
+        }
+    }
+
+    /// Called when app enters background. Persists current timer state to DB.
+    func saveStateForBackground() {
+        guard isActive else { return }
+        saveSnapshot()
+    }
+
     // MARK: - Dialog Actions
 
     func dismissTimerComplete() {
