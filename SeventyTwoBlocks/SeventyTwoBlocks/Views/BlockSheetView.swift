@@ -16,6 +16,7 @@ struct BlockSheetView: View {
     @State private var hasChanges = false
     @State private var initializedFromBlock = false
     @State private var remainingSeconds: Int = 1200  // Updated by timer
+    @State private var shouldDismiss = false
     @FocusState private var labelFieldFocused: Bool
 
     // Timer for pre-start countdown display
@@ -806,17 +807,20 @@ struct BlockSheetView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
-                        dismiss()
+                        shouldDismiss = true
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
                             await saveBlock()
-                            dismiss()
+                            shouldDismiss = true
                         }
                     }
                 }
+            }
+            .onChange(of: shouldDismiss) { _, newValue in
+                if newValue { dismiss() }
             }
             .onAppear {
                 // Only initialize state once when sheet first appears
@@ -1000,8 +1004,6 @@ struct BlockSheetView: View {
                 isBreak: isBreakMode
             )
         }
-
-        await blockManager.reloadBlocks()
     }
 
     private func resetBlock() async {
@@ -1160,17 +1162,15 @@ struct TimeBreakdownView: View {
                     .foregroundStyle(.secondary)
                     .italic()
             } else if isEditing {
-                // EDITING MODE - show individual segment editors
+                // EDITING MODE - show individual segment editors (work + break)
                 Text("Edit category and label for each segment:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                let editableWorkSegments = editedSegments.enumerated().filter { $0.element.type == .work }
-                ForEach(Array(editableWorkSegments), id: \.offset) { globalIndex, segment in
-                    let workIndex = editableWorkSegments.firstIndex(where: { $0.offset == globalIndex }) ?? 0
+                ForEach(Array(editedSegments.enumerated()), id: \.offset) { index, segment in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Segment \(workIndex + 1)")
+                            Text("Segment \(index + 1)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -1179,14 +1179,33 @@ struct TimeBreakdownView: View {
                         }
 
                         HStack(spacing: 8) {
-                            // Category picker
+                            // Category picker (includes Break option)
                             Menu {
-                                Button("None") {
-                                    editedSegments[globalIndex].category = nil
+                                Button {
+                                    editedSegments[index] = BlockSegment(
+                                        type: .break,
+                                        seconds: segment.seconds,
+                                        category: nil,
+                                        label: nil,
+                                        startElapsed: segment.startElapsed
+                                    )
+                                } label: {
+                                    HStack {
+                                        Circle()
+                                            .fill(Color.gray)
+                                            .frame(width: 8, height: 8)
+                                        Text("Break")
+                                    }
                                 }
                                 ForEach(categories) { cat in
                                     Button {
-                                        editedSegments[globalIndex].category = cat.id
+                                        editedSegments[index] = BlockSegment(
+                                            type: .work,
+                                            seconds: segment.seconds,
+                                            category: cat.id,
+                                            label: segment.type == .break ? nil : segment.label,
+                                            startElapsed: segment.startElapsed
+                                        )
                                     } label: {
                                         HStack {
                                             Circle()
@@ -1198,11 +1217,19 @@ struct TimeBreakdownView: View {
                                 }
                             } label: {
                                 HStack {
-                                    Circle()
-                                        .fill(getCategoryColor(segment.category))
-                                        .frame(width: 8, height: 8)
-                                    Text(getCategoryName(segment.category))
-                                        .font(.caption)
+                                    if segment.type == .break {
+                                        Circle()
+                                            .fill(Color.gray)
+                                            .frame(width: 8, height: 8)
+                                        Text("Break")
+                                            .font(.caption)
+                                    } else {
+                                        Circle()
+                                            .fill(getCategoryColor(segment.category))
+                                            .frame(width: 8, height: 8)
+                                        Text(getCategoryName(segment.category))
+                                            .font(.caption)
+                                    }
                                     Image(systemName: "chevron.up.chevron.down")
                                         .font(.system(size: 8))
                                 }
@@ -1212,18 +1239,20 @@ struct TimeBreakdownView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
 
-                            // Label input
-                            TextField("Label", text: Binding(
-                                get: { segment.label ?? "" },
-                                set: { editedSegments[globalIndex].label = $0.isEmpty ? nil : $0 }
-                            ))
-                            .font(.caption)
-                            .textFieldStyle(.roundedBorder)
+                            // Label input (disabled for break segments)
+                            if segment.type == .work {
+                                TextField("Label", text: Binding(
+                                    get: { segment.label ?? "" },
+                                    set: { editedSegments[index].label = $0.isEmpty ? nil : $0 }
+                                ))
+                                .font(.caption)
+                                .textFieldStyle(.roundedBorder)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
 
-                    if workIndex < editableWorkSegments.count - 1 {
+                    if index < editedSegments.count - 1 {
                         Divider()
                     }
                 }

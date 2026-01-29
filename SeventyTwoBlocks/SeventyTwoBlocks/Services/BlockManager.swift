@@ -158,19 +158,11 @@ final class BlockManager: ObservableObject {
 
             let userId = session.user.id.uuidString
 
-            // First, check if a block already exists for this user/date/block_index
-            // This is important because placeholder blocks have random IDs
-            let existingBlocks: [Block] = try await db
-                .from("blocks")
-                .select()
-                .eq("user_id", value: userId)
-                .eq("date", value: block.date)
-                .eq("block_index", value: block.blockIndex)
-                .execute()
-                .value
-
-            // Use existing block's ID if found, otherwise use the provided ID
-            let blockId = existingBlocks.first?.id ?? block.id
+            // Resolve the correct block ID from local state (already loaded from DB).
+            // Placeholder blocks have random IDs; if the block already exists in our
+            // local array (loaded from DB), use that ID instead.
+            let existingLocal = blocks.first(where: { $0.blockIndex == block.blockIndex && $0.date == block.date })
+            let blockId = existingLocal?.id ?? block.id
 
             // Create the block to save with the correct ID and userId
             let blockToSave = Block(
@@ -190,13 +182,11 @@ final class BlockManager: ObservableObject {
                 activeRunSnapshot: block.activeRunSnapshot,
                 segments: block.segments,
                 usedSeconds: block.usedSeconds,
-                createdAt: existingBlocks.first?.createdAt ?? ISO8601DateFormatter().string(from: Date()),
+                createdAt: block.createdAt,
                 updatedAt: ISO8601DateFormatter().string(from: Date())
             )
 
             print("📝 Saving block \(blockToSave.blockIndex): id='\(blockToSave.id)', label='\(blockToSave.label ?? "nil")', category='\(blockToSave.category ?? "nil")', status=\(blockToSave.status)")
-            print("📝   Existing block id from DB lookup: \(existingBlocks.first?.id ?? "none")")
-            print("📝   Existing block label from DB lookup: \(existingBlocks.first?.label ?? "nil")")
 
             try await db
                 .from("blocks")
@@ -205,18 +195,12 @@ final class BlockManager: ObservableObject {
 
             // Update local state immediately
             if let index = blocks.firstIndex(where: { $0.id == blockToSave.id }) {
-                print("✅ Found block by id at index \(index), old label: '\(blocks[index].label ?? "nil")'")
                 blocks[index] = blockToSave
-                print("✅ Updated local block by id at index \(index), new label: '\(blocks[index].label ?? "nil")'")
             } else if let index = blocks.firstIndex(where: { $0.blockIndex == blockToSave.blockIndex && $0.date == blockToSave.date }) {
-                print("✅ Found block by blockIndex at index \(index), old label: '\(blocks[index].label ?? "nil")'")
                 blocks[index] = blockToSave
-                print("✅ Updated local block by blockIndex at index \(index), new label: '\(blocks[index].label ?? "nil")'")
-            } else {
-                print("⚠️ Could not find block in local state to update")
             }
 
-            print("✅ Saved block \(blockToSave.blockIndex) successfully with label '\(blockToSave.label ?? "nil")'")
+            print("✅ Saved block \(blockToSave.blockIndex) successfully")
         } catch {
             self.error = error.localizedDescription
             print("Error saving block: \(error)")
@@ -273,6 +257,8 @@ final class BlockManager: ObservableObject {
                     for cat in customCats {
                         print("   📋 \(cat.id): labels = \(cat.labels ?? [])")
                     }
+
+
                 } else {
                     categories = Category.defaults
                     categoriesAreDefaults = true
@@ -302,6 +288,12 @@ final class BlockManager: ObservableObject {
     // MARK: - Update Category
 
     func updateCategory(categoryId: String, name: String, color: String) async {
+        // Never write categories back to DB if we're using defaults (prevents data corruption)
+        guard !categoriesAreDefaults else {
+            print("⚠️ Skipping category update - categories are defaults, not saving to DB")
+            return
+        }
+
         do {
             let db = await supabaseDBAsync()
 
@@ -448,6 +440,12 @@ final class BlockManager: ObservableObject {
     func addLabelToCategory(categoryId: String, label: String) async {
         print("📝 addLabelToCategory called: categoryId='\(categoryId)', label='\(label)'")
 
+        // Never write categories back to DB if we're using defaults (prevents data corruption)
+        guard !categoriesAreDefaults else {
+            print("⚠️ Skipping label add - categories are defaults, not saving to DB")
+            return
+        }
+
         // Find the category
         guard let index = categories.firstIndex(where: { $0.id == categoryId }) else {
             print("❌ Category '\(categoryId)' not found in categories: \(categories.map { $0.id })")
@@ -507,6 +505,12 @@ final class BlockManager: ObservableObject {
 
     func removeLabelFromCategory(categoryId: String, label: String) async {
         print("🗑️ removeLabelFromCategory called: categoryId='\(categoryId)', label='\(label)'")
+
+        // Never write categories back to DB if we're using defaults (prevents data corruption)
+        guard !categoriesAreDefaults else {
+            print("⚠️ Skipping label remove - categories are defaults, not saving to DB")
+            return
+        }
 
         // Find the category
         guard let index = categories.firstIndex(where: { $0.id == categoryId }) else {

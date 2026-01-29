@@ -207,8 +207,9 @@ struct MainView: View {
             selectedDate = logicalToday
         }
         .task {
-            await blockManager.loadBlocks(for: selectedDate)
-            await goalManager.loadGoals(for: selectedDate)
+            async let blocksLoad: Void = blockManager.loadBlocks(for: selectedDate)
+            async let goalsLoad: Void = goalManager.loadGoals(for: selectedDate)
+            _ = await (blocksLoad, goalsLoad)
             setupTimerCallbacks()
             _ = await NotificationManager.shared.requestPermission()
             NotificationManager.shared.setupNotificationCategories()
@@ -229,8 +230,9 @@ struct MainView: View {
         }
         .onChange(of: selectedDate) { _, newDate in
             Task {
-                await blockManager.loadBlocks(for: newDate)
-                await goalManager.loadGoals(for: newDate)
+                async let blocksLoad: Void = blockManager.loadBlocks(for: newDate)
+                async let goalsLoad: Void = goalManager.loadGoals(for: newDate)
+                _ = await (blocksLoad, goalsLoad)
             }
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in

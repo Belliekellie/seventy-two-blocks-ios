@@ -618,22 +618,25 @@ struct BlockItemView: View {
         return segments.contains { $0.type == .break && $0.seconds > 0 }
     }
 
-    /// Minimum seconds a category needs to count as "meaningful" on a block
-    /// Prevents brief spillover (e.g., continuing into a block then switching within seconds)
-    /// from inflating the +N count
-    private let meaningfulCategoryThreshold = 60
+    /// Minimum seconds for the first segment to count (filters spillover from previous block)
+    private let spilloverThreshold = 60
 
-    /// Count of distinct work categories with meaningful time (60s+)
+    /// Count of distinct work categories, applying the spillover threshold only to the first segment
     private var distinctMeaningfulCategoryCount: Int {
         guard let segments = block?.segments else { return 0 }
-        // Aggregate time per category
+        let workSegments = segments.filter { $0.type == .work && $0.seconds > 0 }
+        guard !workSegments.isEmpty else { return 0 }
+
         var categoryTime: [String: Int] = [:]
-        for seg in segments where seg.type == .work && seg.seconds > 0 {
+        for (index, seg) in workSegments.enumerated() {
+            // Only apply minimum duration to first segment (spillover filter)
+            if index == 0 && seg.seconds < spilloverThreshold {
+                continue
+            }
             let cat = seg.category ?? "_none_"
             categoryTime[cat, default: 0] += seg.seconds
         }
-        // Only count categories with meaningful time
-        return categoryTime.values.filter { $0 >= meaningfulCategoryThreshold }.count
+        return categoryTime.filter { $0.value > 0 }.count
     }
 
     /// Get the dominant category (most time) from work segments
@@ -726,8 +729,8 @@ struct BlockItemView: View {
         // Add +N suffix showing how many ADDITIONAL categories/types with meaningful time (60s+)
         // Brief spillover (<60s) from continuing into a block is ignored
         var extraCount = distinctMeaningfulCategoryCount - 1
-        // Count break as an extra category if it had meaningful time
-        if hasBreakSegments && totalBreakSeconds >= meaningfulCategoryThreshold {
+        // Count break as an extra category if present (any duration)
+        if hasBreakSegments {
             extraCount += 1
         }
         if extraCount > 0 {
