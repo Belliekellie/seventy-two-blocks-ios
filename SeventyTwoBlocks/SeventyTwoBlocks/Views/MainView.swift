@@ -95,11 +95,9 @@ struct MainView: View {
                                 .padding(.horizontal, 4)
                         }
 
-                        // Small spacer for visual breathing room above sticky bottom
-                        Spacer().frame(height: 16)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 4)
                 }
                 .background(Color(.systemBackground))
 
