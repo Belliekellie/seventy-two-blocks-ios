@@ -14,6 +14,7 @@ struct MainView: View {
     @State private var dismissedPlannedBlocks: Set<Int> = []
     @State private var lastCheckedBlockIndex: Int = -1
     @State private var showOverview = false
+    @State private var blocksWithTimerUsage: Set<Int> = []
 
     private var currentBlockIndex: Int {
         Block.getCurrentBlockIndex()
@@ -192,7 +193,7 @@ struct MainView: View {
             // When sheet dismisses (newValue is nil), run auto-skip
             if oldValue != nil && newValue == nil && isToday {
                 Task {
-                    await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex)
+                    await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
             }
         }
@@ -216,7 +217,7 @@ struct MainView: View {
 
             // Run auto-skip on initial load for today
             if isToday {
-                await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex)
+                await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -224,7 +225,7 @@ struct MainView: View {
             if isToday {
                 Task {
                     await blockManager.reloadBlocks()
-                    await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex)
+                    await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
             }
         }
@@ -245,6 +246,8 @@ struct MainView: View {
 
     private func setupTimerCallbacks() {
         timerManager.onTimerComplete = { blockIndex, date, isBreak, secondsUsed, initialTime, segments in
+            // Track this block as having timer usage
+            self.blocksWithTimerUsage.insert(blockIndex)
             // IMMEDIATELY mark the block .done in local state (synchronous, no race condition)
             // This ensures the grid shows it as completed before the async DB save finishes
             if !isBreak {
@@ -401,6 +404,7 @@ struct MainView: View {
         // NEVER start a timer on a future block
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let nextBlockIndex = actualCurrentBlock
+        blocksWithTimerUsage.insert(nextBlockIndex)
 
         // GUARD: Don't restart if timer is already running on this block
         if timerManager.isActive && timerManager.currentBlockIndex == nextBlockIndex {
@@ -449,6 +453,7 @@ struct MainView: View {
     private func handleTakeBreak() {
         // Always use the actual current time block for break
         let blockIndex = Block.getCurrentBlockIndex()
+        blocksWithTimerUsage.insert(blockIndex)
 
         timerManager.continueToNextBlock(
             nextBlockIndex: blockIndex,
@@ -477,6 +482,7 @@ struct MainView: View {
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let timerBlockIndex = timerManager.currentBlockIndex ?? currentBlockIndex
         let blockIndex = actualCurrentBlock
+        blocksWithTimerUsage.insert(blockIndex)
 
         guard blockIndex < 72 else {
             handleStop()
@@ -527,6 +533,7 @@ struct MainView: View {
         }
 
         let nextBlockIndex = actualCurrentBlock
+        blocksWithTimerUsage.insert(nextBlockIndex)
 
         // Use preserved pre-break work context (lastWorkCategory/lastWorkLabel)
         // Fall back to currentCategory/currentLabel if not in break mode
@@ -575,6 +582,7 @@ struct MainView: View {
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let skipBlockIndex = actualCurrentBlock
         let continueBlockIndex = actualCurrentBlock + 1
+        blocksWithTimerUsage.insert(continueBlockIndex)
 
         // Can't skip if we'd go past 72
         guard continueBlockIndex < 72 else {
@@ -629,6 +637,7 @@ struct MainView: View {
     private func handleStartPlannedBlock(_ block: Block) {
         showPlannedBlockDialog = false
         plannedBlock = nil
+        blocksWithTimerUsage.insert(block.blockIndex)
 
         // If this is a night block, activate it and auto-skip previous unused night blocks
         Task {
@@ -657,6 +666,7 @@ struct MainView: View {
     private func handleStartPlannedBlockAsBreak(_ block: Block) {
         showPlannedBlockDialog = false
         plannedBlock = nil
+        blocksWithTimerUsage.insert(block.blockIndex)
 
         // Start a break instead of the planned work
         timerManager.startTimer(
@@ -708,7 +718,7 @@ struct MainView: View {
 
             // Run auto-skip for past blocks
             Task {
-                await blockManager.processAutoSkip(currentBlockIndex: newBlockIndex, timerBlockIndex: timerManager.currentBlockIndex)
+                await blockManager.processAutoSkip(currentBlockIndex: newBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
             }
 
             // Check if current block is planned

@@ -551,7 +551,7 @@ final class BlockManager: ObservableObject {
 
     // MARK: - Auto-Skip Logic
 
-    func processAutoSkip(currentBlockIndex: Int, timerBlockIndex: Int?) async {
+    func processAutoSkip(currentBlockIndex: Int, timerBlockIndex: Int?, blocksWithTimerUsage: Set<Int> = []) async {
         let today = formatDate(Date())
 
         // Only process blocks for today
@@ -578,6 +578,9 @@ final class BlockManager: ObservableObject {
             if let timerBlock = timerBlockIndex, block.blockIndex == timerBlock {
                 continue
             }
+
+            // Don't auto-skip blocks that had timer usage this session
+            guard !blocksWithTimerUsage.contains(block.blockIndex) else { continue }
 
             // Check if block has any actual usage (real work data, not just metadata)
             let hasSegments = !block.segments.isEmpty
