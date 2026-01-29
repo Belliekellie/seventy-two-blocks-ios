@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 
+private let MIN_SEGMENT_SECONDS = 10
+
 @MainActor
 final class TimerManager: ObservableObject {
     // MARK: - Published State
@@ -328,20 +330,24 @@ final class TimerManager: ObservableObject {
     }
 
     /// Update category/label while timer is running
-    /// This creates a segment boundary if the category changes
+    /// Creates a segment boundary if category OR label changes (with 10s minimum for label-only)
     func updateCategory(_ newCategory: String?, label newLabel: String?) {
         guard isActive else { return }
 
         let categoryChanged = newCategory != currentCategory
         let labelChanged = newLabel != currentLabel
 
-        // Only create segment boundary if category actually changed
-        if categoryChanged && !isBreak {
-            // Split the current work segment with old category
+        // Create segment boundary if category OR label changed (not during break)
+        if (categoryChanged || labelChanged) && !isBreak {
             let elapsed = secondsUsed
             let segmentDuration = elapsed - currentSegmentStartElapsed
 
-            if segmentDuration > 0 {
+            // For label-only changes, require minimum duration to prevent micro-segments
+            let isLabelOnlyChange = labelChanged && !categoryChanged
+            let shouldCreateBoundary = segmentDuration > 0 &&
+                (!isLabelOnlyChange || segmentDuration >= MIN_SEGMENT_SECONDS)
+
+            if shouldCreateBoundary {
                 let segment = BlockSegment(
                     type: .work,
                     seconds: segmentDuration,
@@ -350,17 +356,13 @@ final class TimerManager: ObservableObject {
                     startElapsed: currentSegmentStartElapsed
                 )
                 liveSegments.append(segment)
+                currentSegmentStartElapsed = elapsed
             }
-
-            // Start new segment with new category
-            currentSegmentStartElapsed = elapsed
         }
 
-        // Update current values
+        // Always update current values
         currentCategory = newCategory
-        if labelChanged {
-            currentLabel = newLabel
-        }
+        currentLabel = newLabel
 
         print("⏱️ Updated category: \(newCategory ?? "nil"), label: \(newLabel ?? "nil")")
     }
