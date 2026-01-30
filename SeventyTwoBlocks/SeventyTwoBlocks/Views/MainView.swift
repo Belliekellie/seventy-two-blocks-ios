@@ -221,6 +221,11 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // 0. Auto-switch to today if the day has changed (e.g., left app Thursday, opened Friday)
+            if !isToday {
+                selectedDate = logicalToday
+            }
+
             // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
             timerManager.restoreFromBackground()
 
@@ -302,6 +307,10 @@ struct MainView: View {
             }
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            // Auto-switch to today if midnight crossed while app is open
+            if !isToday {
+                selectedDate = logicalToday
+            }
             // Check for block changes every minute
             checkForBlockChange()
         }
