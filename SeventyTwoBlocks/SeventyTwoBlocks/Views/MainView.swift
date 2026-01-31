@@ -304,10 +304,11 @@ struct MainView: View {
                 }
             }
 
-            // 4. Reload blocks and auto-skip (existing behavior)
+            // 4. Reload blocks, goals, and auto-skip
             if isToday {
                 Task {
                     await blockManager.reloadBlocks()
+                    await goalManager.loadGoals(for: selectedDate)
                     await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
             }
