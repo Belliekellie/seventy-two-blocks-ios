@@ -54,6 +54,7 @@ final class TimerManager: ObservableObject {
     // Break tracking
     private var breakStartTime: Date?
     private var totalBreakSeconds: Int = 0
+    private var breakNotifyAt: Date?  // When to fire the 5-min break popup (timer keeps running)
 
     // Callbacks
     // onTimerComplete: blockIndex, date, isBreak, secondsUsed, initialTime, segments (finalized)
@@ -128,7 +129,7 @@ final class TimerManager: ObservableObject {
 
     // MARK: - Timer Control
 
-    func startTimer(for blockIndex: Int, date: String, duration: Int? = nil, isBreakMode: Bool = false, category: String? = nil, label: String? = nil, existingSegments: [BlockSegment] = []) {
+    func startTimer(for blockIndex: Int, date: String, isBreakMode: Bool = false, category: String? = nil, label: String? = nil, existingSegments: [BlockSegment] = []) {
         // GUARD: Never start a timer on a past or future block
         let currentTimeBlock = Block.getCurrentBlockIndex()
         if blockIndex < currentTimeBlock {
@@ -148,24 +149,17 @@ final class TimerManager: ObservableObject {
         let actualEndAt: Date
         let preciseInterval: Double  // Exact time interval for accurate scale factor
 
-        if isBreakMode {
-            // Breaks use fixed duration (not tied to block boundaries)
-            actualDuration = duration ?? 300  // Default 5 minutes for breaks
-            actualEndAt = Date().addingTimeInterval(TimeInterval(actualDuration))
-            preciseInterval = Double(actualDuration)
-        } else {
-            // Work mode: timer ends at block boundary, not arbitrary duration
-            // Calculate end time first, then derive duration from it for accuracy
-            actualEndAt = Block.blockEndDate(for: blockIndex)
-            preciseInterval = actualEndAt.timeIntervalSinceNow
+        // Both break and work modes use block boundary endAt
+        // Breaks use a separate breakNotifyAt for the 5-min popup
+        actualEndAt = Block.blockEndDate(for: blockIndex)
+        preciseInterval = actualEndAt.timeIntervalSinceNow
 
-            if preciseInterval <= 0 {
-                print("⏱️ Block \(blockIndex) has already passed, cannot start timer")
-                return
-            }
-            // Round up so we don't show 0 seconds initially
-            actualDuration = Int(ceil(preciseInterval))
+        if preciseInterval <= 0 {
+            print("⏱️ Block \(blockIndex) has already passed, cannot start timer")
+            return
         }
+        // Round up so we don't show 0 seconds initially
+        actualDuration = Int(ceil(preciseInterval))
 
         // Calculate visual proportion already used by existing segments
         // Each segment's visual proportion = seconds / 1200 (20 minutes)
@@ -219,16 +213,12 @@ final class TimerManager: ObservableObject {
         // Calculate scale factor based on remaining visual proportion
         // This ensures the new segments fill the remaining visual space
         // scaleFactor = remainingVisualProportion / remainingRealTime
-        if isBreakMode {
-            // Breaks use fixed scale factor (not tied to remaining block space)
-            sessionScaleFactor = preciseInterval > 0 ? 1.0 / preciseInterval : 1.0 / 300.0
-        } else {
-            // Work mode: scale to fill remaining visual space
-            sessionScaleFactor = preciseInterval > 0 ? remainingVisualProportion / preciseInterval : 1.0 / 1200.0
-        }
+        // Both break and work use the same formula (breaks fill toward block boundary)
+        sessionScaleFactor = preciseInterval > 0 ? remainingVisualProportion / preciseInterval : 1.0 / 1200.0
 
         if isBreakMode {
             breakStartTime = Date()
+            breakNotifyAt = Date().addingTimeInterval(300)  // 5-min popup trigger
         }
 
         // Start tick timer
@@ -320,6 +310,7 @@ final class TimerManager: ObservableObject {
 
         isBreak = true
         breakStartTime = Date()
+        breakNotifyAt = Date().addingTimeInterval(300)  // 5-min popup trigger
 
         onWidgetUpdate?()
         print("⏱️ Switched to break mode, preserved work context: \(lastWorkCategory ?? "nil") / \(lastWorkLabel ?? "nil")")
@@ -342,9 +333,36 @@ final class TimerManager: ObservableObject {
 
         isBreak = false
         breakStartTime = nil
+        breakNotifyAt = nil  // Cancel any pending break notification
 
         onWidgetUpdate?()
         print("⏱️ Switched to work mode, restored work context: \(currentCategory ?? "nil") / \(currentLabel ?? "nil")")
+    }
+
+    // MARK: - Break Notification (mid-block popup, timer keeps running)
+
+    /// Called when 5 minutes of break have elapsed. Shows the break dialog
+    /// but does NOT stop the timer — the block continues toward its boundary.
+    private func handleBreakNotification() {
+        guard isBreak, !showBreakComplete else { return }
+        breakNotifyAt = nil  // Fire once
+        showBreakComplete = true
+        timerCompletedAt = Date()  // For auto-continue countdown in dialog
+        onWidgetUpdate?()
+        print("⏱️ Break notification fired (5 min elapsed) — timer still running")
+    }
+
+    /// Dismiss the mid-block break notification without stopping the timer
+    func dismissBreakNotification() {
+        showBreakComplete = false
+        timerCompletedAt = nil
+    }
+
+    /// Snooze the break notification — dismiss dialog and schedule another in `duration` seconds
+    func snoozeBreakNotification(duration: Int = 300) {
+        breakNotifyAt = Date().addingTimeInterval(TimeInterval(duration))
+        dismissBreakNotification()
+        print("⏱️ Break notification snoozed for \(duration)s")
     }
 
     /// Update category/label while timer is running
@@ -404,6 +422,7 @@ final class TimerManager: ObservableObject {
         endAt = nil
         activeRunId = nil
         breakStartTime = nil
+        breakNotifyAt = nil
         previousSegments = []
         liveSegments = []
         currentSegmentStartElapsed = 0
@@ -444,10 +463,9 @@ final class TimerManager: ObservableObject {
             progress = Double(secondsUsed) / Double(initialTime) * 100
         }
 
-        // Update break progress (for break indicator)
-        if isBreak, let breakStart = breakStartTime {
-            let breakElapsed = Int(Date().timeIntervalSince(breakStart))
-            breakProgress = Double(breakElapsed) / 300.0 * 100  // 5 min = 300s
+        // Check if break notification should fire (5-min popup, timer keeps running)
+        if isBreak, let notifyAt = breakNotifyAt, Date() >= notifyAt {
+            handleBreakNotification()
         }
 
         // Throttled widget update at 25% progress milestones
@@ -509,12 +527,11 @@ final class TimerManager: ObservableObject {
             onTimerComplete?(blockIndex, date, wasBreak, initialTime, initialTime, finalSegments)
         }
 
-        // Show appropriate dialog
-        if wasBreak {
-            showBreakComplete = true
-        } else {
-            showTimerComplete = true
-        }
+        // Always show timer complete dialog at block boundary (block time is up)
+        // Dismiss any mid-block break notification if one was showing
+        showBreakComplete = false
+        breakNotifyAt = nil
+        showTimerComplete = true
 
         // Record completion time for epoch-based auto-continue countdown
         // Uses actual end time, not current time, so backgrounded duration is accounted for
@@ -615,6 +632,11 @@ final class TimerManager: ObservableObject {
             }
             startTickTimer()
             startAutosaveTimer()
+
+            // Check if break notification should have fired while backgrounded
+            if let notifyAt = breakNotifyAt, notifyAt <= Date() {
+                handleBreakNotification()
+            }
         }
     }
 
@@ -652,6 +674,7 @@ final class TimerManager: ObservableObject {
         sessionScaleFactor = 1.0 / 1200.0
         progress = 0
         breakProgress = 0
+        breakNotifyAt = nil
         lastReportedProgressQuarter = -1
     }
 
@@ -663,10 +686,5 @@ final class TimerManager: ObservableObject {
         // Duration is calculated automatically based on block boundaries for work mode
         // Pass existing segments so we continue from where the block left off (if any)
         startTimer(for: nextBlockIndex, date: date, isBreakMode: isBreakMode, category: category, label: label, existingSegments: existingSegments)
-    }
-
-    func extendBreak(blockIndex: Int, date: String, duration: Int = 300, existingSegments: [BlockSegment] = []) {
-        showBreakComplete = false
-        startTimer(for: blockIndex, date: date, duration: duration, isBreakMode: true, category: nil, label: "Break", existingSegments: existingSegments)
     }
 }

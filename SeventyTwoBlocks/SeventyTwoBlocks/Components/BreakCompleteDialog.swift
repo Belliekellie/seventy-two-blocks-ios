@@ -26,7 +26,7 @@ struct BreakCompleteDialog: View {
 
             // Title
             VStack(spacing: 8) {
-                Text("Break Complete")
+                Text("Break Time's Up")
                     .font(.title2.bold())
 
                 Text("Feeling refreshed? Time to get back to work!")
@@ -35,9 +35,9 @@ struct BreakCompleteDialog: View {
                     .multilineTextAlignment(.center)
             }
 
-            // Auto-extend countdown
+            // Auto-continue countdown (keeps resting)
             if countdown > 0 {
-                Text("Extending break in \(countdown)s...")
+                Text("Continuing break in \(countdown)s...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
@@ -70,8 +70,8 @@ struct BreakCompleteDialog: View {
                     onContinueBreak()
                 }) {
                     HStack {
-                        Image(systemName: "cup.and.saucer.fill")
-                        Text("Extend Break (+5 min)")
+                        Image(systemName: "moon.zzz.fill")
+                        Text("Keep Resting")
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)

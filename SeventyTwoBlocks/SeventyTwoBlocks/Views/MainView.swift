@@ -142,7 +142,7 @@ struct MainView: View {
                 BreakCompleteDialog(
                     blockIndex: timerManager.currentBlockIndex ?? 0,
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
-                    onContinueBreak: handleExtendBreak,
+                    onContinueBreak: handleContinueBreak,
                     onBackToWork: handleBackToWork,
                     onStartNewBlock: handleStartNewBlock,
                     onStop: handleStop
@@ -342,14 +342,13 @@ struct MainView: View {
             self.blocksWithTimerUsage.insert(blockIndex)
             // IMMEDIATELY mark the block .done in local state (synchronous, no race condition)
             // This ensures the grid shows it as completed before the async DB save finishes
-            if !isBreak {
-                if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
-                    self.blockManager.blocks[idx].status = .done
-                    self.blockManager.blocks[idx].segments = segments
-                    self.blockManager.blocks[idx].usedSeconds = secondsUsed
-                    self.blockManager.blocks[idx].progress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
-                    print("✅ Immediately marked block \(blockIndex) as .done in local state")
-                }
+            // Marks done regardless of break/work — block time was fully used at boundary
+            if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                self.blockManager.blocks[idx].status = .done
+                self.blockManager.blocks[idx].segments = segments
+                self.blockManager.blocks[idx].usedSeconds = secondsUsed
+                self.blockManager.blocks[idx].progress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
+                print("✅ Immediately marked block \(blockIndex) as .done in local state")
             }
             Task {
                 await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments)
@@ -632,24 +631,29 @@ struct MainView: View {
         let blockIndex = Block.getCurrentBlockIndex()
         blocksWithTimerUsage.insert(blockIndex)
 
+        // Get existing segments from this block (in case it has data from earlier)
+        let targetBlock = blockManager.blocks.first { $0.blockIndex == blockIndex }
+        let existingSegments = targetBlock?.segments ?? []
+
         timerManager.continueToNextBlock(
             nextBlockIndex: blockIndex,
             date: todayString,
             isBreakMode: true,
             category: nil,
-            label: "Break"
+            label: "Break",
+            existingSegments: existingSegments
         )
 
-        // Start Live Activity for break
+        // Start Live Activity — break timer runs to block boundary
         startWidgetLiveActivity(
             blockIndex: blockIndex,
             isBreak: true,
-            endAt: Date().addingTimeInterval(300),
+            endAt: Block.blockEndDate(for: blockIndex),
             category: nil,
             label: "Break"
         )
 
-        // Schedule notification for break (5 minutes)
+        // Schedule notification for break reminder (5 minutes, not block end)
         NotificationManager.shared.scheduleTimerComplete(
             at: Date().addingTimeInterval(300),
             blockIndex: blockIndex,
@@ -658,53 +662,51 @@ struct MainView: View {
     }
 
     private func handleStartNewBlock() {
+        // Stop the timer if still running (e.g., mid-block break notification)
+        if timerManager.isActive {
+            timerManager.stopTimer(markComplete: false)
+        }
         timerManager.dismissTimerComplete()
+        timerManager.dismissBreakNotification()
+        WidgetDataProvider.shared.endLiveActivity()
         // Open block selection sheet for current block
         selectedBlockIndex = currentBlockIndex
     }
 
-    private func handleExtendBreak() {
-        // ALWAYS extend break on the CURRENT TIME block
-        let actualCurrentBlock = Block.getCurrentBlockIndex()
-        let timerBlockIndex = timerManager.currentBlockIndex ?? currentBlockIndex
-        let blockIndex = actualCurrentBlock
-        blocksWithTimerUsage.insert(blockIndex)
-
-        guard blockIndex < 72 else {
-            handleStop()
-            return
-        }
-
-        // Get segments: from timer if same block, from saved data if moving to new block
-        let timerSegments = timerManager.previousSegments + timerManager.liveSegments
-
-        let existingSegments: [BlockSegment]
-        if blockIndex != timerBlockIndex {
-            // Moving to new block - get that block's existing segments (if any)
-            let targetBlock = blockManager.blocks.first { $0.blockIndex == blockIndex }
-            existingSegments = targetBlock?.segments ?? []
-        } else {
-            // Staying on same block - continue with timer's segments
-            existingSegments = timerSegments
-        }
-
-        timerManager.extendBreak(blockIndex: blockIndex, date: todayString, duration: 300, existingSegments: existingSegments)
-
-        // Activate the block if it's muted (for extending break into night blocks)
-        Task {
-            await blockManager.activateBlockForTimer(blockIndex: blockIndex)
-        }
-
-        // Schedule notification for extended break (5 minutes)
-        NotificationManager.shared.scheduleTimerComplete(
-            at: Date().addingTimeInterval(300),
-            blockIndex: blockIndex,
-            isBreak: true
-        )
+    private func handleContinueBreak() {
+        // Timer is still running toward block boundary — just snooze the notification
+        // The dialog dismisses and the break continues to block end
+        timerManager.snoozeBreakNotification()
     }
 
     private func handleBackToWork() {
-        // ALWAYS resume work on the CURRENT TIME block
+        // If timer is still active in break mode (mid-block break notification),
+        // just switch to work mode — no need to restart the timer
+        if timerManager.isActive && timerManager.isBreak {
+            timerManager.switchToWork()
+            timerManager.dismissBreakNotification()
+
+            // Schedule notification at block boundary for work completion
+            if let blockIndex = timerManager.currentBlockIndex {
+                NotificationManager.shared.scheduleTimerComplete(
+                    at: Block.blockEndDate(for: blockIndex),
+                    blockIndex: blockIndex,
+                    isBreak: false
+                )
+                // Update Live Activity to show work mode
+                let category = timerManager.currentCategory
+                startWidgetLiveActivity(
+                    blockIndex: blockIndex,
+                    isBreak: false,
+                    endAt: Block.blockEndDate(for: blockIndex),
+                    category: category,
+                    label: timerManager.currentLabel
+                )
+            }
+            return
+        }
+
+        // Timer is NOT active (block boundary completion) — start a new work timer
         let actualCurrentBlock = Block.getCurrentBlockIndex()
 
         // GUARD: Don't restart if timer is already running work on this block
@@ -862,6 +864,10 @@ struct MainView: View {
     }
 
     private func handleStop() {
+        // Stop the timer if still running (e.g., mid-block break notification)
+        if timerManager.isActive {
+            timerManager.stopTimer(markComplete: false)
+        }
         timerManager.dismissTimerComplete()
         timerManager.dismissBreakComplete()
         NotificationManager.shared.cancelAllNotifications()
@@ -969,7 +975,7 @@ struct MainView: View {
         plannedBlock = nil
         blocksWithTimerUsage.insert(block.blockIndex)
 
-        // Start a break instead of the planned work
+        // Start a break instead of the planned work (timer runs to block boundary)
         timerManager.startTimer(
             for: block.blockIndex,
             date: todayString,
@@ -979,7 +985,16 @@ struct MainView: View {
             existingSegments: block.segments
         )
 
-        // Schedule notification for break (5 minutes)
+        // Start Live Activity — break timer runs to block boundary
+        startWidgetLiveActivity(
+            blockIndex: block.blockIndex,
+            isBreak: true,
+            endAt: Block.blockEndDate(for: block.blockIndex),
+            category: nil,
+            label: "Break"
+        )
+
+        // Schedule notification for break reminder (5 minutes, not block end)
         NotificationManager.shared.scheduleTimerComplete(
             at: Date().addingTimeInterval(300),
             blockIndex: block.blockIndex,
