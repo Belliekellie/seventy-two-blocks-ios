@@ -845,16 +845,15 @@ struct BlockItemView: View {
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
                         ForEach(Array(liveSegs.enumerated()), id: \.offset) { index, segment in
                             let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
-                            let segmentWidth = Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale
-                            // Minimum 2pt fill on the in-progress (last) segment so active blocks
-                            // show immediate visual feedback even when the fill is sub-pixel
+                            let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
+                            // Minimum 6pt fill on the in-progress (last) segment so active blocks
+                            // show immediate visual feedback (must exceed corner radius clipping)
                             let isLastSegment = index == liveSegs.count - 1
-                            let minWidth = isLastSegment ? 2.0 / max(geo.size.width, 1) : 0
-                            let effectiveWidth = max(minWidth, min(segmentWidth, 1.0 - segmentStart))
+                            let fillWidth = isLastSegment ? max(6, rawWidth) : rawWidth
 
                             Rectangle()
                                 .fill(colorForSegment(segment))
-                                .frame(width: geo.size.width * effectiveWidth)
+                                .frame(width: fillWidth)
                                 .offset(x: geo.size.width * min(segmentStart, 1.0))
                         }
                     }
