@@ -852,7 +852,7 @@ struct BlockItemView: View {
                             let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
                             let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
                             let isLastSegment = index == liveSegs.count - 1
-                            let fillWidth = (isLastSegment && applyMinFill) ? max(3.5, rawWidth) : rawWidth
+                            let fillWidth = (isLastSegment && applyMinFill) ? max(4, rawWidth) : rawWidth
 
                             Rectangle()
                                 .fill(colorForSegment(segment))
