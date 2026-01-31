@@ -843,13 +843,14 @@ struct BlockItemView: View {
 
                         // 2. Render live segments (current session) starting after previous segments
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
+                        // Only apply minimum fill in the first 60s of a timer session
+                        // to avoid a visible jump when switching categories mid-block
+                        let applyMinFill = timerManager.secondsUsed < 60
                         ForEach(Array(liveSegs.enumerated()), id: \.offset) { index, segment in
                             let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
                             let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
-                            // Minimum 6pt fill on the in-progress (last) segment so active blocks
-                            // show immediate visual feedback (must exceed corner radius clipping)
                             let isLastSegment = index == liveSegs.count - 1
-                            let fillWidth = isLastSegment ? max(6, rawWidth) : rawWidth
+                            let fillWidth = (isLastSegment && applyMinFill) ? max(6, rawWidth) : rawWidth
 
                             Rectangle()
                                 .fill(colorForSegment(segment))
