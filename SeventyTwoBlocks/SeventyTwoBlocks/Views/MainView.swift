@@ -583,8 +583,11 @@ struct MainView: View {
             return
         }
 
-        let category = timerManager.currentCategory
-        let label = timerManager.currentLabel
+        // If the user was on a break when the block ended, continue as a break
+        // (same logic as any other category leaking into the next block)
+        let wasBreak = timerManager.isBreak
+        let category = wasBreak ? nil : timerManager.currentCategory
+        let label = wasBreak ? "Break" : timerManager.currentLabel
 
         // Get existing segments from next block (in case it has data from earlier)
         let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
@@ -593,7 +596,7 @@ struct MainView: View {
         timerManager.continueToNextBlock(
             nextBlockIndex: nextBlockIndex,
             date: todayString,
-            isBreakMode: false,
+            isBreakMode: wasBreak,
             category: category,
             label: label,
             existingSegments: existingSegments
@@ -602,7 +605,7 @@ struct MainView: View {
         // Start Live Activity
         startWidgetLiveActivity(
             blockIndex: nextBlockIndex,
-            isBreak: false,
+            isBreak: wasBreak,
             endAt: Block.blockEndDate(for: nextBlockIndex),
             category: category,
             label: label
@@ -615,12 +618,20 @@ struct MainView: View {
             await saveBlockForContinue(blockIndex: nextBlockIndex, category: category, label: label)
         }
 
-        // Schedule notification at next block's end time
-        NotificationManager.shared.scheduleTimerComplete(
-            at: Block.blockEndDate(for: nextBlockIndex),
-            blockIndex: nextBlockIndex,
-            isBreak: false
-        )
+        // Schedule notification — break gets 5-min reminder, work gets block boundary
+        if wasBreak {
+            NotificationManager.shared.scheduleTimerComplete(
+                at: Date().addingTimeInterval(300),
+                blockIndex: nextBlockIndex,
+                isBreak: true
+            )
+        } else {
+            NotificationManager.shared.scheduleTimerComplete(
+                at: Block.blockEndDate(for: nextBlockIndex),
+                blockIndex: nextBlockIndex,
+                isBreak: false
+            )
+        }
 
         // Trigger segment focus change (handles collapse/expand/scroll)
         NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
