@@ -845,7 +845,7 @@ struct BlockItemView: View {
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
                         // Only apply minimum fill in the first 60s of a timer session
                         // to avoid a visible jump when switching categories mid-block
-                        let applyMinFill = timerManager.secondsUsed < 60
+                        let applyMinFill = timerManager.secondsUsed < 30
                         ForEach(Array(liveSegs.enumerated()), id: \.offset) { index, segment in
                             let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
                             let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
