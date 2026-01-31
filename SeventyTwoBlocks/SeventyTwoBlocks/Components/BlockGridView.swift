@@ -842,13 +842,19 @@ struct BlockItemView: View {
                         }
 
                         // 2. Render live segments (current session) starting after previous segments
-                        ForEach(Array(timerManager.liveSegmentsIncludingCurrent.enumerated()), id: \.offset) { index, segment in
-                            let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: timerManager.liveSegmentsIncludingCurrent, scaleFactor: timerManager.sessionScaleFactor) * visualScale
+                        let liveSegs = timerManager.liveSegmentsIncludingCurrent
+                        ForEach(Array(liveSegs.enumerated()), id: \.offset) { index, segment in
+                            let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
                             let segmentWidth = Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale
+                            // Minimum 2pt fill on the in-progress (last) segment so active blocks
+                            // show immediate visual feedback even when the fill is sub-pixel
+                            let isLastSegment = index == liveSegs.count - 1
+                            let minWidth = isLastSegment ? 2.0 / max(geo.size.width, 1) : 0
+                            let effectiveWidth = max(minWidth, min(segmentWidth, 1.0 - segmentStart))
 
                             Rectangle()
                                 .fill(colorForSegment(segment))
-                                .frame(width: geo.size.width * min(segmentWidth, 1.0 - segmentStart))
+                                .frame(width: geo.size.width * effectiveWidth)
                                 .offset(x: geo.size.width * min(segmentStart, 1.0))
                         }
                     }
