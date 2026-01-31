@@ -100,6 +100,10 @@ final class WidgetDataProvider {
             userDefaults?.set(data, forKey: WidgetConstants.widgetDataKey)
         }
 
+        // Sync dayStartHour so widgets can detect stale data across day boundaries
+        let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
+        userDefaults?.set(dayStartHour, forKey: "dayStartHour")
+
         // Reload widget timelines
         WidgetCenter.shared.reloadAllTimelines()
     }

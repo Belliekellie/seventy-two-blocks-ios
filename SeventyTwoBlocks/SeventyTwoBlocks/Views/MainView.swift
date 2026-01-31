@@ -15,6 +15,8 @@ struct MainView: View {
     @State private var lastCheckedBlockIndex: Int = -1
     @State private var showOverview = false
     @State private var blocksWithTimerUsage: Set<Int> = []
+    @State private var showDayEndDialog = false
+    @State private var continuedPastDayEnd = false
 
     private var currentBlockIndex: Int {
         Block.getCurrentBlockIndex()
@@ -162,10 +164,30 @@ struct MainView: View {
                 )
                 .transition(.scale.combined(with: .opacity))
             }
+
+            if showDayEndDialog {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture { }
+
+                DayEndDialog(
+                    onStartNextDay: {
+                        showDayEndDialog = false
+                        continuedPastDayEnd = false
+                        selectedDate = logicalToday
+                    },
+                    onContinueWorking: {
+                        showDayEndDialog = false
+                        continuedPastDayEnd = true
+                    }
+                )
+                .transition(.scale.combined(with: .opacity))
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: timerManager.showTimerComplete)
         .animation(.easeInOut(duration: 0.2), value: timerManager.showBreakComplete)
         .animation(.easeInOut(duration: 0.2), value: showPlannedBlockDialog)
+        .animation(.easeInOut(duration: 0.2), value: showDayEndDialog)
         // Dialog priority: Timer/Break complete dialogs take precedence over planned dialog
         .onChange(of: timerManager.showTimerComplete) { _, newValue in
             if newValue && showPlannedBlockDialog {
@@ -221,8 +243,9 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // 0. Auto-switch to today if the day has changed (e.g., left app Thursday, opened Friday)
-            if !isToday {
+            // 0. Auto-switch to today if the day has changed, but only when user isn't actively working
+            //    and hasn't chosen to continue past day end
+            if !isToday && !timerManager.isActive && !timerManager.showTimerComplete && !timerManager.showBreakComplete && !continuedPastDayEnd {
                 selectedDate = logicalToday
             }
 
@@ -307,11 +330,6 @@ struct MainView: View {
             }
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-            // Auto-switch to today if midnight crossed while app is open
-            if !isToday {
-                selectedDate = logicalToday
-            }
-            // Check for block changes every minute
             checkForBlockChange()
         }
     }
@@ -456,6 +474,21 @@ struct MainView: View {
         print("💾 Saved snapshot for block \(blockIndex) - usedSeconds: \(totalUsedSeconds), progress: \(Int(newProgress))%")
     }
 
+    /// At the absolute grid end (NT block 23 → AM block 24), flip to the new day.
+    /// This is the hard boundary — the grid has wrapped around.
+    private func flipToNextDayIfGridWrapped(nextBlockIndex: Int) async {
+        // Grid wraps when moving from NT range (0-23) to AM range (24+)
+        // and the logical day has already changed
+        guard !isToday else { return }
+        guard let prevBlock = timerManager.currentBlockIndex,
+              prevBlock <= 23 && nextBlockIndex >= 24 else { return }
+        print("📅 Grid wrapped (block \(prevBlock) → \(nextBlockIndex)) — flipping to next day")
+        continuedPastDayEnd = false
+        selectedDate = logicalToday
+        await blockManager.loadBlocks(for: selectedDate)
+        await goalManager.loadGoals(for: selectedDate)
+    }
+
     private func saveBlockForContinue(blockIndex: Int, category: String?, label: String?) async {
         print("🔄 saveBlockForContinue: block \(blockIndex), category: \(category ?? "nil"), label: \(label ?? "nil")")
 
@@ -465,7 +498,8 @@ struct MainView: View {
             var updatedBlock = block
             updatedBlock.category = category
             updatedBlock.label = label
-            updatedBlock.status = .planned  // Mark as active/planned
+            // Don't change status — the timer is about to start on this block.
+            // onTimerComplete will mark it .done when it finishes.
             // IMPORTANT: Unmute and activate the block if it was muted (e.g., night/sleep blocks)
             // This allows work to continue into deactivated sections
             if block.isMuted {
@@ -494,7 +528,7 @@ struct MainView: View {
                 category: category,
                 label: label,
                 note: nil,
-                status: .planned,
+                status: .idle,
                 progress: 0,
                 breakProgress: 0,
                 runs: nil,
@@ -577,6 +611,7 @@ struct MainView: View {
 
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
         Task {
+            await flipToNextDayIfGridWrapped(nextBlockIndex: nextBlockIndex)
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
             await saveBlockForContinue(blockIndex: nextBlockIndex, category: category, label: label)
         }
@@ -715,6 +750,7 @@ struct MainView: View {
 
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
         Task {
+            await flipToNextDayIfGridWrapped(nextBlockIndex: nextBlockIndex)
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
             await saveBlockForContinue(blockIndex: nextBlockIndex, category: category, label: label)
         }
@@ -973,17 +1009,25 @@ struct MainView: View {
     // MARK: - Block Change Detection
 
     private func checkForBlockChange() {
-        guard isToday else { return }
-
         let newBlockIndex = currentBlockIndex
+
+        // Day-end check: if past dayStartHour, user is idle, and block boundary crossed → show dialog
+        if !isToday && !timerManager.isActive && !timerManager.showTimerComplete && !timerManager.showBreakComplete
+            && !showDayEndDialog && !continuedPastDayEnd && newBlockIndex != lastCheckedBlockIndex {
+            showDayEndDialog = true
+        }
+
+        guard isToday || continuedPastDayEnd else { return }
 
         // Check if we've moved to a new block
         if newBlockIndex != lastCheckedBlockIndex {
             lastCheckedBlockIndex = newBlockIndex
 
-            // Run auto-skip for past blocks
-            Task {
-                await blockManager.processAutoSkip(currentBlockIndex: newBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+            // Run auto-skip for past blocks (only for today's data)
+            if isToday {
+                Task {
+                    await blockManager.processAutoSkip(currentBlockIndex: newBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                }
             }
 
             // Check if current block is planned

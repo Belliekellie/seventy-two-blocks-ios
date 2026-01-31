@@ -15,7 +15,28 @@ enum WidgetDataReader {
               let widgetData = try? decoder.decode(WidgetData.self, from: data) else {
             return .empty
         }
+
+        // Check if data is from a previous logical day (respects dayStartHour setting)
+        let dayStartHour = defaults.object(forKey: "dayStartHour") as? Int ?? 6
+        if isFromPreviousDay(widgetData.lastUpdated, dayStartHour: dayStartHour) {
+            return .empty
+        }
+
         return widgetData
+    }
+
+    /// Returns true if the given date belongs to a different logical day than now.
+    /// A logical day starts at dayStartHour (e.g., 6am), so 2am Friday is still Thursday's day.
+    private static func isFromPreviousDay(_ date: Date, dayStartHour: Int) -> Bool {
+        let calendar = Calendar.current
+        let now = Date()
+
+        // Shift both dates back by dayStartHour so calendar day boundaries align with logical days
+        let offset = TimeInterval(-dayStartHour * 3600)
+        let adjustedNow = now.addingTimeInterval(offset)
+        let adjustedDate = date.addingTimeInterval(offset)
+
+        return !calendar.isDate(adjustedNow, inSameDayAs: adjustedDate)
     }
 }
 

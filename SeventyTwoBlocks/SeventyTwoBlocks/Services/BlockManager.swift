@@ -639,17 +639,30 @@ final class BlockManager: ObservableObject {
         // Find the block being activated
         guard let block = blocks.first(where: { $0.blockIndex == blockIndex }) else { return }
 
-        // If the block is muted, unmute it immediately in local state (removes moon icon instantly)
+        // Activate the block for timer use: unmute if needed, clear .planned status
+        var needsSave = false
+        var activatedBlock = block
+
         if block.isMuted {
-            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
-                blocks[localIdx].isMuted = false
-                blocks[localIdx].isActivated = true
-            }
-            var activatedBlock = block
             activatedBlock.isMuted = false
             activatedBlock.isActivated = true
-            await saveBlock(activatedBlock)
+            needsSave = true
             print("🌙 Activated muted block \(blockIndex)")
+        }
+
+        if block.status == .planned {
+            activatedBlock.status = .idle
+            needsSave = true
+            print("📋 Cleared .planned status for block \(blockIndex) — timer is starting")
+        }
+
+        if needsSave {
+            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blocks[localIdx].isMuted = activatedBlock.isMuted
+                blocks[localIdx].isActivated = activatedBlock.isActivated
+                blocks[localIdx].status = activatedBlock.status
+            }
+            await saveBlock(activatedBlock)
         }
 
         // Special handling for night blocks
