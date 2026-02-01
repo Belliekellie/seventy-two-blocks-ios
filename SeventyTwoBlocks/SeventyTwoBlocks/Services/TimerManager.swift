@@ -321,10 +321,9 @@ final class TimerManager: ObservableObject {
         // Split segment (captures current work category/label into the segment)
         splitSegment(toType: .break)
 
-        // Clear current values — break has no category/label.
-        // Work context is safe in lastWork* for restoration via switchToWork().
-        currentCategory = nil
-        currentLabel = nil
+        // Keep currentCategory/currentLabel as-is so the block cell continues
+        // to display the work label in normal color while on break.
+        // The autosave skips writing category/label during break mode.
 
         isBreak = true
         breakStartTime = Date()

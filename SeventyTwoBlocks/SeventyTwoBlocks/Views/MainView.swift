@@ -502,8 +502,13 @@ struct MainView: View {
         updatedBlock.usedSeconds = totalUsedSeconds
         updatedBlock.progress = newProgress
         updatedBlock.breakProgress = newBreakProgress
-        updatedBlock.category = timerManager.currentCategory ?? block.category
-        updatedBlock.label = timerManager.currentLabel ?? block.label
+        // During break, don't overwrite the block's category/label with the
+        // timer's stale work values — the block should keep whatever was set
+        // when work was active. Only update during work mode.
+        if !timerManager.isBreak {
+            updatedBlock.category = timerManager.currentCategory ?? block.category
+            updatedBlock.label = timerManager.currentLabel ?? block.label
+        }
         // Also save the combined segments so they persist on refresh
         updatedBlock.segments = allSegments
 
