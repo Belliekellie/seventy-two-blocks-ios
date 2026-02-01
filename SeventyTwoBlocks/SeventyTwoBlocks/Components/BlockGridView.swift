@@ -943,8 +943,14 @@ struct BlockItemView: View {
                         .lineLimit(1)
                         .foregroundStyle(labelTextColor)
                 } else if isTimerActiveOnThisBlock {
-                    // Show timer label/category (may be more up-to-date than block data)
-                    if let timerLabel = timerManager.currentLabel, !timerLabel.isEmpty {
+                    // Break mode takes priority — don't leak the work label
+                    if timerManager.isBreak {
+                        Text("BREAK")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(0.3)
+                            .lineLimit(1)
+                            .foregroundStyle(labelTextColor)
+                    } else if let timerLabel = timerManager.currentLabel, !timerLabel.isEmpty {
                         Text(timerLabel.uppercased())
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(0.3)
@@ -956,11 +962,6 @@ struct BlockItemView: View {
                             .tracking(0.3)
                             .lineLimit(1)
                             .foregroundStyle(labelTextColor)
-                    } else if timerManager.isBreak {
-                        Text("BREAK")
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(0.3)
-                            .foregroundStyle(.red)
                     }
                 } else if isDone, let doneLabel = doneBlockDisplayLabel {
                     // Done blocks: show dominant label with +brk suffix if break was taken
