@@ -15,6 +15,7 @@ struct SettingsView: View {
 
     // Timer Settings
     @AppStorage("disableAutoContinue") private var disableAutoContinue = false
+    @AppStorage("blocksUntilCheckIn") private var blocksUntilCheckIn = 3
 
     // Skipped Block Style (motivational insults)
     @AppStorage("showMotivationalInsults") private var showMotivationalInsults = false
@@ -100,10 +101,23 @@ struct SettingsView: View {
                             Text("Disable auto-continue")
                         }
                     }
+
+                    if !disableAutoContinue {
+                        Stepper(value: $blocksUntilCheckIn, in: 1...12) {
+                            HStack {
+                                Text("⏰")
+                                Text("Check in every \(blocksUntilCheckIn) block\(blocksUntilCheckIn == 1 ? "" : "s")")
+                            }
+                        }
+                    }
                 } header: {
                     Text("Timer")
                 } footer: {
-                    Text("When disabled, timer won't automatically continue to the next block.")
+                    if disableAutoContinue {
+                        Text("When disabled, timer won't automatically continue to the next block.")
+                    } else {
+                        Text("When the app auto-continues without interaction, it will ask you to confirm after this many blocks.")
+                    }
                 }
 
                 // Skipped Blocks Style

@@ -28,6 +28,9 @@ final class TimerManager: ObservableObject {
     @Published var showBreakComplete = false
     @Published var timerCompletedAt: Date?
 
+    // Check-in tracking: counts consecutive auto-continues without user interaction
+    @Published var blocksSinceLastInteraction: Int = 0
+
     // MARK: - Internal State
     private var startedAt: Date?
     private var endAt: Date?
@@ -125,6 +128,16 @@ final class TimerManager: ObservableObject {
             ))
         }
         return segments
+    }
+
+    // MARK: - Interaction Counter
+
+    func resetInteractionCounter() {
+        blocksSinceLastInteraction = 0
+    }
+
+    func incrementInteractionCounter() {
+        blocksSinceLastInteraction += 1
     }
 
     // MARK: - Timer Control
@@ -400,6 +413,13 @@ final class TimerManager: ObservableObject {
         currentCategory = newCategory
         currentLabel = newLabel
 
+        // During break, also update the saved work context so switchToWork()
+        // picks up the user's new choice instead of restoring the old one
+        if isBreak {
+            lastWorkCategory = newCategory
+            lastWorkLabel = newLabel
+        }
+
         onWidgetUpdate?()
         print("⏱️ Updated category: \(newCategory ?? "nil"), label: \(newLabel ?? "nil")")
     }
@@ -430,6 +450,7 @@ final class TimerManager: ObservableObject {
         sessionScaleFactor = 1.0 / 1200.0
         previousVisualProportion = 0
         lastReportedProgressQuarter = -1
+        blocksSinceLastInteraction = 0
     }
 
     private func startTickTimer() {
@@ -676,6 +697,7 @@ final class TimerManager: ObservableObject {
         breakProgress = 0
         breakNotifyAt = nil
         lastReportedProgressQuarter = -1
+        blocksSinceLastInteraction = 0
     }
 
     // MARK: - Continue Actions

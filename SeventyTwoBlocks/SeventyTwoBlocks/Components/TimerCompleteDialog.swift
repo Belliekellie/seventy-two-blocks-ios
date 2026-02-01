@@ -6,7 +6,10 @@ struct TimerCompleteDialog: View {
     let label: String?
     let totalDoneBlocks: Int  // For set celebration calculation
     let timerEndedAt: Date    // When the timer actually completed (for epoch-based countdown)
+    let suppressAutoContinue: Bool
+    let onCheckIn: (() -> Void)?
     let onContinue: () -> Void
+    let onAutoContinue: () -> Void
     let onTakeBreak: () -> Void
     let onStartNewBlock: () -> Void
     let onSkipNextBlock: (() -> Void)?  // Optional: Skip the next block and continue to the one after
@@ -86,8 +89,16 @@ struct TimerCompleteDialog: View {
                     .multilineTextAlignment(.center)
             }
 
-            // Auto-continue countdown
-            if !disableAutoContinue && countdown > 0 {
+            // Auto-continue countdown or check-in message
+            if suppressAutoContinue {
+                Text("It's been a while \u{2014} still working?")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(Capsule())
+            } else if !disableAutoContinue && countdown > 0 {
                 Text("Continuing in \(countdown)s...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -106,7 +117,7 @@ struct TimerCompleteDialog: View {
         .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
         .padding(.horizontal, 24)
         .onAppear {
-            if !disableAutoContinue {
+            if !disableAutoContinue && !suppressAutoContinue {
                 startCountdown()
             }
             AudioManager.shared.playCompletionBell()
@@ -142,8 +153,16 @@ struct TimerCompleteDialog: View {
                     .multilineTextAlignment(.center)
             }
 
-            // Auto-continue countdown
-            if !disableAutoContinue && countdown > 0 {
+            // Auto-continue countdown or check-in message
+            if suppressAutoContinue {
+                Text("It's been a while \u{2014} still working?")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(Capsule())
+            } else if !disableAutoContinue && countdown > 0 {
                 Text("Continuing in \(countdown)s...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -166,7 +185,7 @@ struct TimerCompleteDialog: View {
             if justCompletedSet {
                 showCelebration = true
             }
-            if !disableAutoContinue {
+            if !disableAutoContinue && !suppressAutoContinue {
                 startCountdown()
             }
             AudioManager.shared.playCompletionBell()
@@ -183,6 +202,9 @@ struct TimerCompleteDialog: View {
             // Primary action - Continue
             Button(action: {
                 stopCountdown()
+                if suppressAutoContinue {
+                    onCheckIn?()
+                }
                 onContinue()
             }) {
                 HStack {
@@ -285,7 +307,7 @@ struct TimerCompleteDialog: View {
         let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
         countdown = max(0, 25 - elapsed)
         if countdown <= 0 {
-            onContinue()
+            onAutoContinue()
             return
         }
         autoContinueTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
@@ -294,7 +316,7 @@ struct TimerCompleteDialog: View {
             countdown = remaining
             if remaining <= 0 {
                 stopCountdown()
-                onContinue()
+                onAutoContinue()
             }
         }
     }
@@ -316,7 +338,10 @@ struct TimerCompleteDialog: View {
             label: "Building iOS App",
             totalDoneBlocks: 5,
             timerEndedAt: Date(),
+            suppressAutoContinue: false,
+            onCheckIn: nil,
             onContinue: {},
+            onAutoContinue: {},
             onTakeBreak: {},
             onStartNewBlock: {},
             onSkipNextBlock: {},
@@ -337,7 +362,34 @@ struct TimerCompleteDialog: View {
             label: "Building iOS App",
             totalDoneBlocks: 12,  // Triggers celebration
             timerEndedAt: Date(),
+            suppressAutoContinue: false,
+            onCheckIn: nil,
             onContinue: {},
+            onAutoContinue: {},
+            onTakeBreak: {},
+            onStartNewBlock: {},
+            onSkipNextBlock: nil,
+            onStop: {}
+        )
+        .environmentObject(BlockManager())
+    }
+}
+
+#Preview("Check-In") {
+    ZStack {
+        Color.black.opacity(0.4)
+            .ignoresSafeArea()
+
+        TimerCompleteDialog(
+            blockIndex: 30,
+            category: "work",
+            label: "Building iOS App",
+            totalDoneBlocks: 5,
+            timerEndedAt: Date(),
+            suppressAutoContinue: true,
+            onCheckIn: {},
+            onContinue: {},
+            onAutoContinue: {},
             onTakeBreak: {},
             onStartNewBlock: {},
             onSkipNextBlock: nil,

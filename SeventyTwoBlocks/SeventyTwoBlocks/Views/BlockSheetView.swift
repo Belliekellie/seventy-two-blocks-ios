@@ -505,7 +505,11 @@ struct BlockSheetView: View {
                                 hasChanges = true
                                 // Update timer label if running
                                 if isTimerRunningForThisBlock {
-                                    timerManager.currentLabel = normalizeLabel(newValue)
+                                    let normalized = normalizeLabel(newValue)
+                                    timerManager.currentLabel = normalized
+                                    if timerManager.isBreak {
+                                        timerManager.lastWorkLabel = normalized
+                                    }
                                 }
                             }
                             .onSubmit {
@@ -552,11 +556,17 @@ struct BlockSheetView: View {
                                             label = ""
                                             if isTimerRunningForThisBlock {
                                                 timerManager.currentLabel = nil
+                                                if timerManager.isBreak {
+                                                    timerManager.lastWorkLabel = nil
+                                                }
                                             }
                                         } else {
                                             label = favLabel
                                             if isTimerRunningForThisBlock {
                                                 timerManager.currentLabel = favLabel
+                                                if timerManager.isBreak {
+                                                    timerManager.lastWorkLabel = favLabel
+                                                }
                                             }
                                             // Auto-save and dismiss when selecting a label
                                             Task {
@@ -621,11 +631,17 @@ struct BlockSheetView: View {
                                             label = ""
                                             if isTimerRunningForThisBlock {
                                                 timerManager.currentLabel = nil
+                                                if timerManager.isBreak {
+                                                    timerManager.lastWorkLabel = nil
+                                                }
                                             }
                                         } else {
                                             label = catLabel
                                             if isTimerRunningForThisBlock {
                                                 timerManager.currentLabel = catLabel
+                                                if timerManager.isBreak {
+                                                    timerManager.lastWorkLabel = catLabel
+                                                }
                                             }
                                             // Auto-save and dismiss when selecting a label
                                             Task {

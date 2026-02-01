@@ -34,10 +34,13 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - Schedule Notifications
 
-    func scheduleTimerComplete(at date: Date, blockIndex: Int, isBreak: Bool) {
+    func scheduleTimerComplete(at date: Date, blockIndex: Int, isBreak: Bool, isCheckIn: Bool = false) {
         let content = UNMutableNotificationContent()
 
-        if isBreak {
+        if isCheckIn {
+            content.title = "Still working?"
+            content.body = "It's been a while since you checked in. Tap Continue to keep going."
+        } else if isBreak {
             content.title = "Break Complete"
             content.body = "Your 5-minute break is over. Ready to get back to work?"
         } else {

@@ -23,6 +23,7 @@ struct MainView: View {
     }
 
     @AppStorage("dayStartHour") private var dayStartHour = 6
+    @AppStorage("blocksUntilCheckIn") private var blocksUntilCheckIn = 3
 
     /// Returns the "logical today" Date, accounting for dayStartHour setting
     /// If current time is before dayStartHour, we're still in "yesterday" (the previous logical day)
@@ -49,6 +50,10 @@ struct MainView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: selectedDate) == todayString
+    }
+
+    private var shouldSuppressAutoContinue: Bool {
+        timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn
     }
 
     /// Count of completed (done) blocks today, excluding muted blocks
@@ -125,11 +130,29 @@ struct MainView: View {
                     label: timerManager.currentLabel,
                     totalDoneBlocks: completedBlocks,
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
-                    onContinue: handleContinueWork,
-                    onTakeBreak: handleTakeBreak,
-                    onStartNewBlock: handleStartNewBlock,
+                    suppressAutoContinue: shouldSuppressAutoContinue,
+                    onCheckIn: { timerManager.resetInteractionCounter() },
+                    onContinue: {
+                        timerManager.resetInteractionCounter()
+                        handleContinueWork()
+                    },
+                    onAutoContinue: {
+                        timerManager.incrementInteractionCounter()
+                        handleContinueWork()
+                    },
+                    onTakeBreak: {
+                        timerManager.resetInteractionCounter()
+                        handleTakeBreak()
+                    },
+                    onStartNewBlock: {
+                        timerManager.resetInteractionCounter()
+                        handleStartNewBlock()
+                    },
                     onSkipNextBlock: handleSkipNextBlock,
-                    onStop: handleStop
+                    onStop: {
+                        timerManager.resetInteractionCounter()
+                        handleStop()
+                    }
                 )
                 .transition(.scale.combined(with: .opacity))
             }
@@ -142,10 +165,28 @@ struct MainView: View {
                 BreakCompleteDialog(
                     blockIndex: timerManager.currentBlockIndex ?? 0,
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
-                    onContinueBreak: handleContinueBreak,
-                    onBackToWork: handleBackToWork,
-                    onStartNewBlock: handleStartNewBlock,
-                    onStop: handleStop
+                    suppressAutoContinue: shouldSuppressAutoContinue,
+                    onCheckIn: { timerManager.resetInteractionCounter() },
+                    onContinueBreak: {
+                        timerManager.resetInteractionCounter()
+                        handleContinueBreak()
+                    },
+                    onAutoContinueBreak: {
+                        timerManager.incrementInteractionCounter()
+                        handleContinueBreak()
+                    },
+                    onBackToWork: {
+                        timerManager.resetInteractionCounter()
+                        handleBackToWork()
+                    },
+                    onStartNewBlock: {
+                        timerManager.resetInteractionCounter()
+                        handleStartNewBlock()
+                    },
+                    onStop: {
+                        timerManager.resetInteractionCounter()
+                        handleStop()
+                    }
                 )
                 .transition(.scale.combined(with: .opacity))
             }
@@ -267,14 +308,10 @@ struct MainView: View {
             //    (this dismisses any dialog that restoreFromBackground showed)
             if let action = NotificationManager.shared.pendingAction {
                 NotificationManager.shared.pendingAction = nil
+                // User explicitly tapped a notification action — reset check-in counter
+                timerManager.resetInteractionCounter()
                 switch action {
                 case "continue":
-                    // User explicitly chose Continue — retroactively fill in blocks they worked
-                    if let completedAt = timerManager.timerCompletedAt {
-                        let category = timerManager.lastWorkCategory ?? timerManager.currentCategory
-                        let label = timerManager.lastWorkLabel ?? timerManager.currentLabel
-                        retroactivelyCompleteBlocks(completedAt: completedAt, category: category, label: label)
-                    }
                     handleContinueWork()
                 case "takeBreak": handleTakeBreak()
                 case "newBlock":
@@ -474,15 +511,11 @@ struct MainView: View {
         print("💾 Saved snapshot for block \(blockIndex) - usedSeconds: \(totalUsedSeconds), progress: \(Int(newProgress))%")
     }
 
-    /// At the absolute grid end (NT block 23 → AM block 24), flip to the new day.
-    /// This is the hard boundary — the grid has wrapped around.
+    /// When auto-continuing across a day boundary, flip the grid to the new day.
     private func flipToNextDayIfGridWrapped(nextBlockIndex: Int) async {
-        // Grid wraps when moving from NT range (0-23) to AM range (24+)
-        // and the logical day has already changed
         guard !isToday else { return }
-        guard let prevBlock = timerManager.currentBlockIndex,
-              prevBlock <= 23 && nextBlockIndex >= 24 else { return }
-        print("📅 Grid wrapped (block \(prevBlock) → \(nextBlockIndex)) — flipping to next day")
+        // Day has changed — switch grid to new day
+        print("📅 Day changed — flipping grid to logical today")
         continuedPastDayEnd = false
         selectedDate = logicalToday
         await blockManager.loadBlocks(for: selectedDate)
@@ -620,17 +653,20 @@ struct MainView: View {
         }
 
         // Schedule notification — break gets 5-min reminder, work gets block boundary
+        let willCheckIn = timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn - 1
         if wasBreak {
             NotificationManager.shared.scheduleTimerComplete(
                 at: Date().addingTimeInterval(300),
                 blockIndex: nextBlockIndex,
-                isBreak: true
+                isBreak: true,
+                isCheckIn: willCheckIn
             )
         } else {
             NotificationManager.shared.scheduleTimerComplete(
                 at: Block.blockEndDate(for: nextBlockIndex),
                 blockIndex: nextBlockIndex,
-                isBreak: false
+                isBreak: false,
+                isCheckIn: willCheckIn
             )
         }
 
@@ -686,9 +722,10 @@ struct MainView: View {
     }
 
     private func handleContinueBreak() {
-        // Timer is still running toward block boundary — just snooze the notification
-        // The dialog dismisses and the break continues to block end
-        timerManager.snoozeBreakNotification()
+        // Dismiss the break popup — break continues to block boundary with no more popups.
+        // The 5-min reminder fires once per break session. After "Keep Resting", the break
+        // runs like any normal category until the block ends or the user switches back to work.
+        timerManager.dismissBreakNotification()
     }
 
     private func handleBackToWork() {
@@ -778,101 +815,6 @@ struct MainView: View {
 
         // Trigger segment focus change (handles collapse/expand/scroll)
         NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
-    }
-
-    // MARK: - Retroactive Block Completion
-
-    /// When the user returns to the app after an extended absence, retroactively mark
-    /// all blocks that would have been completed via auto-continue as `.done`.
-    /// Each block ends at its calendar boundary, then after a 25s delay the next starts.
-    private func retroactivelyCompleteBlocks(completedAt: Date, category: String?, label: String?) {
-        let now = Date()
-        let calendar = Calendar.current
-        let autoContinueDelay: TimeInterval = 25
-
-        // When would the first auto-continue have fired?
-        var simulatedTime = completedAt.addingTimeInterval(autoContinueDelay)
-
-        // Collect blocks to retroactively complete
-        var blocksToComplete: [Int] = []
-
-        while simulatedTime < now {
-            // Which block would we be in at simulatedTime?
-            let startOfDay = calendar.startOfDay(for: simulatedTime)
-            let minutesSinceStart = Int(simulatedTime.timeIntervalSince(startOfDay)) / 60
-            let blockIndex = min(71, minutesSinceStart / 20)
-
-            // When does this block end?
-            let blockEnd = Block.blockEndDate(for: blockIndex, on: simulatedTime)
-
-            if blockEnd <= now {
-                // This entire block would have completed during the absence
-                blocksToComplete.append(blockIndex)
-                blocksWithTimerUsage.insert(blockIndex)
-                // Next auto-continue fires after this block's boundary + delay
-                simulatedTime = blockEnd.addingTimeInterval(autoContinueDelay)
-            } else {
-                // This block is still in progress — handleContinueWork will start it
-                break
-            }
-
-            // Don't loop past the last block of the day
-            if blockIndex >= 71 { break }
-        }
-
-        guard !blocksToComplete.isEmpty else { return }
-        print("🔄 Retroactively completing \(blocksToComplete.count) blocks: \(blocksToComplete)")
-
-        let dateStr = todayString
-
-        // 1. Update local state immediately so the UI reflects the completed blocks
-        for blockIndex in blocksToComplete {
-            if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex && $0.date == dateStr }) {
-                blockManager.blocks[idx].status = .done
-                blockManager.blocks[idx].category = category
-                blockManager.blocks[idx].label = label
-                blockManager.blocks[idx].usedSeconds = 1200
-                blockManager.blocks[idx].progress = 100.0
-                blockManager.blocks[idx].segments = [BlockSegment(type: .work, seconds: 1200, category: category, label: label)]
-                if blockManager.blocks[idx].isMuted {
-                    blockManager.blocks[idx].isMuted = false
-                    blockManager.blocks[idx].isActivated = true
-                }
-            }
-        }
-
-        // 2. Persist to database asynchronously
-        Task {
-            let userId = blockManager.blocks.first?.userId ?? ""
-            for blockIndex in blocksToComplete {
-                if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == dateStr }) {
-                    await blockManager.saveBlock(block)
-                } else {
-                    // Block doesn't exist in local array yet — create it
-                    let newBlock = Block(
-                        id: UUID().uuidString,
-                        userId: userId,
-                        date: dateStr,
-                        blockIndex: blockIndex,
-                        isMuted: false,
-                        isActivated: true,
-                        category: category,
-                        label: label,
-                        note: nil,
-                        status: .done,
-                        progress: 100.0,
-                        breakProgress: 0,
-                        runs: nil,
-                        activeRunSnapshot: nil,
-                        segments: [BlockSegment(type: .work, seconds: 1200, category: category, label: label)],
-                        usedSeconds: 1200,
-                        createdAt: ISO8601DateFormatter().string(from: Date()),
-                        updatedAt: ISO8601DateFormatter().string(from: Date())
-                    )
-                    await blockManager.saveBlock(newBlock)
-                }
-            }
-        }
     }
 
     private func handleStop() {

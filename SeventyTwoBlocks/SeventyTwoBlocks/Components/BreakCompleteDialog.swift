@@ -3,7 +3,10 @@ import SwiftUI
 struct BreakCompleteDialog: View {
     let blockIndex: Int
     let timerEndedAt: Date    // When the break actually completed (for epoch-based countdown)
+    let suppressAutoContinue: Bool
+    let onCheckIn: (() -> Void)?
     let onContinueBreak: () -> Void
+    let onAutoContinueBreak: () -> Void
     let onBackToWork: () -> Void
     let onStartNewBlock: () -> Void
     let onStop: () -> Void
@@ -35,8 +38,16 @@ struct BreakCompleteDialog: View {
                     .multilineTextAlignment(.center)
             }
 
-            // Auto-continue countdown (keeps resting)
-            if countdown > 0 {
+            // Auto-continue countdown or check-in message
+            if suppressAutoContinue {
+                Text("It's been a while \u{2014} still working?")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(Capsule())
+            } else if countdown > 0 {
                 Text("Continuing break in \(countdown)s...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -67,6 +78,9 @@ struct BreakCompleteDialog: View {
                 // Secondary action - Continue break
                 Button(action: {
                     stopCountdown()
+                    if suppressAutoContinue {
+                        onCheckIn?()
+                    }
                     onContinueBreak()
                 }) {
                     HStack {
@@ -136,7 +150,9 @@ struct BreakCompleteDialog: View {
         .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
         .padding(.horizontal, 24)
         .onAppear {
-            startCountdown()
+            if !suppressAutoContinue {
+                startCountdown()
+            }
             AudioManager.shared.playCompletionBell()
         }
         .onDisappear {
@@ -149,7 +165,7 @@ struct BreakCompleteDialog: View {
         let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
         countdown = max(0, 30 - elapsed)
         if countdown <= 0 {
-            onContinueBreak()
+            onAutoContinueBreak()
             return
         }
         autoExtendTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
@@ -158,7 +174,7 @@ struct BreakCompleteDialog: View {
             countdown = remaining
             if remaining <= 0 {
                 stopCountdown()
-                onContinueBreak()
+                onAutoContinueBreak()
             }
         }
     }
@@ -177,7 +193,29 @@ struct BreakCompleteDialog: View {
         BreakCompleteDialog(
             blockIndex: 30,
             timerEndedAt: Date(),
+            suppressAutoContinue: false,
+            onCheckIn: nil,
             onContinueBreak: {},
+            onAutoContinueBreak: {},
+            onBackToWork: {},
+            onStartNewBlock: {},
+            onStop: {}
+        )
+    }
+}
+
+#Preview("Check-In") {
+    ZStack {
+        Color.black.opacity(0.4)
+            .ignoresSafeArea()
+
+        BreakCompleteDialog(
+            blockIndex: 30,
+            timerEndedAt: Date(),
+            suppressAutoContinue: true,
+            onCheckIn: {},
+            onContinueBreak: {},
+            onAutoContinueBreak: {},
             onBackToWork: {},
             onStartNewBlock: {},
             onStop: {}
