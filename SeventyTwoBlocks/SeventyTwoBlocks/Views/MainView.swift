@@ -130,6 +130,7 @@ struct MainView: View {
                     label: timerManager.currentLabel,
                     totalDoneBlocks: completedBlocks,
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
+                    isBreakMode: timerManager.isBreak,
                     suppressAutoContinue: shouldSuppressAutoContinue,
                     onCheckIn: { timerManager.resetInteractionCounter() },
                     onContinue: {
@@ -143,6 +144,10 @@ struct MainView: View {
                     onTakeBreak: {
                         timerManager.resetInteractionCounter()
                         handleTakeBreak()
+                    },
+                    onBackToWork: {
+                        timerManager.resetInteractionCounter()
+                        handleBackToWork()
                     },
                     onStartNewBlock: {
                         timerManager.resetInteractionCounter()

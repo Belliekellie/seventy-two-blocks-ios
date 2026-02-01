@@ -6,13 +6,15 @@ struct TimerCompleteDialog: View {
     let label: String?
     let totalDoneBlocks: Int  // For set celebration calculation
     let timerEndedAt: Date    // When the timer actually completed (for epoch-based countdown)
+    let isBreakMode: Bool     // Whether the timer was in break mode when the block ended
     let suppressAutoContinue: Bool
     let onCheckIn: (() -> Void)?
-    let onContinue: () -> Void
-    let onAutoContinue: () -> Void
-    let onTakeBreak: () -> Void
+    let onContinue: () -> Void       // Primary: continue same mode (work or break)
+    let onAutoContinue: () -> Void   // Countdown expired: continue same mode
+    let onTakeBreak: () -> Void      // Work mode: switch to break
+    let onBackToWork: () -> Void     // Break mode: switch to work
     let onStartNewBlock: () -> Void
-    let onSkipNextBlock: (() -> Void)?  // Optional: Skip the next block and continue to the one after
+    let onSkipNextBlock: (() -> Void)?
     let onStop: () -> Void
 
     @EnvironmentObject var blockManager: BlockManager
@@ -134,12 +136,12 @@ struct TimerCompleteDialog: View {
             // Success icon
             ZStack {
                 Circle()
-                    .fill(categoryColor.opacity(0.2))
+                    .fill((isBreakMode ? Color.red : categoryColor).opacity(0.2))
                     .frame(width: 80, height: 80)
 
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 50))
-                    .foregroundStyle(categoryColor)
+                Image(systemName: isBreakMode ? "cup.and.saucer.fill" : "checkmark.circle.fill")
+                    .font(.system(size: isBreakMode ? 40 : 50))
+                    .foregroundStyle(isBreakMode ? .red : categoryColor)
             }
 
             // Title
@@ -147,7 +149,7 @@ struct TimerCompleteDialog: View {
                 Text("Block Complete!")
                     .font(.title2.bold())
 
-                Text("Great work on \(label ?? categoryLabel)!")
+                Text(isBreakMode ? "Your break continues to the next block." : "Great work on \(label ?? categoryLabel)!")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -155,7 +157,7 @@ struct TimerCompleteDialog: View {
 
             // Auto-continue countdown or check-in message
             if suppressAutoContinue {
-                Text("It's been a while \u{2014} still working?")
+                Text("It's been a while \u{2014} still there?")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
@@ -163,7 +165,7 @@ struct TimerCompleteDialog: View {
                     .background(Color.orange.opacity(0.15))
                     .clipShape(Capsule())
             } else if !disableAutoContinue && countdown > 0 {
-                Text("Continuing in \(countdown)s...")
+                Text(isBreakMode ? "Continuing break in \(countdown)s..." : "Continuing in \(countdown)s...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
@@ -199,7 +201,7 @@ struct TimerCompleteDialog: View {
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
-            // Primary action - Continue
+            // Primary action - Continue in current mode
             Button(action: {
                 stopCountdown()
                 if suppressAutoContinue {
@@ -208,33 +210,37 @@ struct TimerCompleteDialog: View {
                 onContinue()
             }) {
                 HStack {
-                    Image(systemName: "play.fill")
-                    Text("Continue Working")
+                    Image(systemName: isBreakMode ? "moon.zzz.fill" : "play.fill")
+                    Text(isBreakMode ? "Keep Resting" : "Continue Working")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(categoryColor)
+                .background(isBreakMode ? Color.red : categoryColor)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
-            // Secondary action - Take break
+            // Secondary action - Switch mode
             Button(action: {
                 stopCountdown()
-                onTakeBreak()
+                if isBreakMode {
+                    onBackToWork()
+                } else {
+                    onTakeBreak()
+                }
             }) {
                 HStack {
-                    Image(systemName: "cup.and.saucer.fill")
-                    Text("Take a 5-min Break")
+                    Image(systemName: isBreakMode ? "play.fill" : "cup.and.saucer.fill")
+                    Text(isBreakMode ? "Back to Work" : "Take a 5-min Break")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.red.opacity(0.15))
-                .foregroundStyle(.red)
+                .background(isBreakMode ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                .foregroundStyle(isBreakMode ? .green : .red)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.red.opacity(0.3), lineWidth: 1)
+                        .strokeBorder((isBreakMode ? Color.green : Color.red).opacity(0.3), lineWidth: 1)
                 )
             }
 
@@ -327,7 +333,7 @@ struct TimerCompleteDialog: View {
     }
 }
 
-#Preview("Regular Completion") {
+#Preview("Work Completion") {
     ZStack {
         Color.black.opacity(0.4)
             .ignoresSafeArea()
@@ -338,13 +344,41 @@ struct TimerCompleteDialog: View {
             label: "Building iOS App",
             totalDoneBlocks: 5,
             timerEndedAt: Date(),
+            isBreakMode: false,
             suppressAutoContinue: false,
             onCheckIn: nil,
             onContinue: {},
             onAutoContinue: {},
             onTakeBreak: {},
+            onBackToWork: {},
             onStartNewBlock: {},
             onSkipNextBlock: {},
+            onStop: {}
+        )
+        .environmentObject(BlockManager())
+    }
+}
+
+#Preview("Break Completion") {
+    ZStack {
+        Color.black.opacity(0.4)
+            .ignoresSafeArea()
+
+        TimerCompleteDialog(
+            blockIndex: 30,
+            category: nil,
+            label: "Break",
+            totalDoneBlocks: 5,
+            timerEndedAt: Date(),
+            isBreakMode: true,
+            suppressAutoContinue: false,
+            onCheckIn: nil,
+            onContinue: {},
+            onAutoContinue: {},
+            onTakeBreak: {},
+            onBackToWork: {},
+            onStartNewBlock: {},
+            onSkipNextBlock: nil,
             onStop: {}
         )
         .environmentObject(BlockManager())
@@ -360,13 +394,15 @@ struct TimerCompleteDialog: View {
             blockIndex: 30,
             category: "work",
             label: "Building iOS App",
-            totalDoneBlocks: 12,  // Triggers celebration
+            totalDoneBlocks: 12,
             timerEndedAt: Date(),
+            isBreakMode: false,
             suppressAutoContinue: false,
             onCheckIn: nil,
             onContinue: {},
             onAutoContinue: {},
             onTakeBreak: {},
+            onBackToWork: {},
             onStartNewBlock: {},
             onSkipNextBlock: nil,
             onStop: {}
@@ -386,11 +422,13 @@ struct TimerCompleteDialog: View {
             label: "Building iOS App",
             totalDoneBlocks: 5,
             timerEndedAt: Date(),
+            isBreakMode: false,
             suppressAutoContinue: true,
             onCheckIn: {},
             onContinue: {},
             onAutoContinue: {},
             onTakeBreak: {},
+            onBackToWork: {},
             onStartNewBlock: {},
             onSkipNextBlock: nil,
             onStop: {}
