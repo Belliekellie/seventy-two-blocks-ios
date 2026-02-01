@@ -165,14 +165,14 @@ struct MainView: View {
                 BreakCompleteDialog(
                     blockIndex: timerManager.currentBlockIndex ?? 0,
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
-                    suppressAutoContinue: shouldSuppressAutoContinue,
-                    onCheckIn: { timerManager.resetInteractionCounter() },
+                    suppressAutoContinue: false,  // Break popup is mid-block, not block-level — never suppress
+                    onCheckIn: nil,
                     onContinueBreak: {
-                        timerManager.resetInteractionCounter()
+                        // Mid-block break dismissal — don't touch the check-in counter
                         handleContinueBreak()
                     },
                     onAutoContinueBreak: {
-                        timerManager.incrementInteractionCounter()
+                        // Mid-block break auto-dismiss — don't touch the check-in counter
                         handleContinueBreak()
                     },
                     onBackToWork: {

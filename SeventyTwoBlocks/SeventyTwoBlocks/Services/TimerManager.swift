@@ -365,10 +365,11 @@ final class TimerManager: ObservableObject {
         print("⏱️ Break notification fired (5 min elapsed) — timer still running")
     }
 
-    /// Dismiss the mid-block break notification without stopping the timer
+    /// Dismiss the mid-block break notification without stopping the timer.
+    /// Does NOT clear timerCompletedAt — that's owned by handleTimerComplete()
+    /// and clearing it here races with the block-boundary completion dialog.
     func dismissBreakNotification() {
         showBreakComplete = false
-        timerCompletedAt = nil
     }
 
     /// Snooze the break notification — dismiss dialog and schedule another in `duration` seconds
@@ -450,7 +451,11 @@ final class TimerManager: ObservableObject {
         sessionScaleFactor = 1.0 / 1200.0
         previousVisualProportion = 0
         lastReportedProgressQuarter = -1
-        blocksSinceLastInteraction = 0
+        // NOTE: Do NOT reset blocksSinceLastInteraction here.
+        // stopTimerInternal() is called by startTimer() during auto-continue,
+        // which would wipe the counter and defeat the check-in system.
+        // The counter is reset explicitly by resetInteractionCounter() on user actions,
+        // and in resetState() when the user stops/dismisses.
     }
 
     private func startTickTimer() {
