@@ -300,15 +300,16 @@ final class TimerManager: ObservableObject {
 
         stopTimerInternal()
 
-        if markComplete, let blockIndex = blockIndex, let date = date {
-            // Pass ALL segments (previous + live) to the callback along with visual fill
+        // ALWAYS save segments when stopping - they represent real work done
+        // The callback handler decides whether to mark the block as .done based on block time
+        if let blockIndex = blockIndex, let date = date, !finalSegments.isEmpty {
             onTimerComplete?(blockIndex, date, wasBreak, used, sessionInitialTime, finalSegments, capturedVisualFill)
         }
 
         // Notify widget of timer stop
         onWidgetUpdate?()
 
-        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count) (previous: \(previousSegments.count), live: \(liveSegments.count))")
+        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count), visualFill: \(String(format: "%.1f%%", capturedVisualFill * 100))")
     }
 
     func pauseTimer() {
@@ -377,19 +378,22 @@ final class TimerManager: ObservableObject {
         // So: initialTime = secondsUsedAtPause + timeLeft
         initialTime = secondsUsedAtPause + timeLeft
 
-        // Recalculate visual proportions and scale factor
-        // Previous segments (from earlier sessions) + live segments (finalized at pause)
-        let allPreviousSeconds = (previousSegments + liveSegments).reduce(0) { $0 + $1.seconds }
-        previousVisualProportion = Double(allPreviousSeconds) / 1200.0
-        let remainingVisualProportion = max(0, 1.0 - previousVisualProportion)
+        // CRITICAL: Capture the actual visual fill achieved at pause time BEFORE moving segments
+        // This is where the color bar actually is - we must preserve this exactly
+        let visualFillAtPause = currentVisualFill
 
-        // New scale factor: remaining visual space / remaining real time
-        // This ensures the fill reaches 100% exactly when timer ends
-        sessionScaleFactor = preciseInterval > 0 ? remainingVisualProportion / preciseInterval : 1.0 / 1200.0
-
-        // Move current liveSegments to previousSegments since we finalized them at pause
+        // Move live segments to previous segments
         previousSegments = previousSegments + liveSegments
         liveSegments = []
+
+        // Set previousVisualProportion to the ACTUAL visual fill, not recalculated from seconds
+        // This ensures live segments start exactly where the color bar was at pause
+        previousVisualProportion = visualFillAtPause
+
+        // Calculate new scale factor for remaining work
+        // This ensures fill reaches 100% exactly when timer ends
+        let remainingVisualProportion = max(0, 1.0 - visualFillAtPause)
+        sessionScaleFactor = preciseInterval > 0 ? remainingVisualProportion / preciseInterval : 1.0 / 1200.0
 
         // Start a fresh segment from current position
         currentSegmentStartElapsed = secondsUsed
@@ -400,7 +404,7 @@ final class TimerManager: ObservableObject {
         startTickTimer()
         startAutosaveTimer()
 
-        print("⏱️ Timer resumed: timeLeft=\(timeLeft)s, initialTime=\(initialTime), secondsUsed=\(secondsUsed), scaleFactor=\(sessionScaleFactor), previousProportion=\(previousVisualProportion)")
+        print("⏱️ Timer resumed: timeLeft=\(timeLeft)s, initialTime=\(initialTime), secondsUsed=\(secondsUsed), visualFillAtPause=\(String(format: "%.1f%%", visualFillAtPause * 100)), newScaleFactor=\(String(format: "%.8f", sessionScaleFactor))")
     }
 
     // MARK: - Work/Break Switching

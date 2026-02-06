@@ -819,22 +819,26 @@ struct BlockItemView: View {
                 // No fill for skipped blocks - they show empty
             } else if isTimerActiveOnThisBlock {
                 // Live segment fill - render previous and current session segments separately
-                // Previous segments use 1/1200 scale, live segments use sessionScaleFactor
+                // Previous segments fill to previousVisualProportion, live segments use sessionScaleFactor
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         // IMPORTANT: Access timerManager.progress to force SwiftUI to re-render every tick
                         // Without this, SwiftUI doesn't track the computed property dependencies
                         let _ = timerManager.progress
 
-                        // Calculate total fill to determine if we're at 100%
-                        let previousScale = 1.0 / 1200.0
                         let liveStartOffset = timerManager.previousVisualProportion
                         // Scale fill so it visually reaches the edge exactly when timer hits 0
                         // Corner radius makes ~97.5% visual look full, so we use 0.975 scale
-                        // At 100% actual fill, visual = 97.5% which looks full due to corner radius
                         let visualScale = 0.975
 
                         // 1. Render previous segments (from earlier timer sessions)
+                        // Use a scale factor that makes them fill to exactly previousVisualProportion
+                        // This preserves their visual position after pause/resume
+                        let totalPreviousSeconds = timerManager.previousSegments.reduce(0) { $0 + $1.seconds }
+                        let previousScale = totalPreviousSeconds > 0
+                            ? liveStartOffset / Double(totalPreviousSeconds)
+                            : 1.0 / 1200.0
+
                         ForEach(Array(timerManager.previousSegments.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: timerManager.previousSegments, scaleFactor: previousScale) * visualScale
                             let segmentWidth = Double(segment.seconds) * previousScale * visualScale
@@ -847,8 +851,6 @@ struct BlockItemView: View {
 
                         // 2. Render live segments (current session) starting after previous segments
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
-                        // Calculate total seconds from all segments to determine if min fill applies
-                        let totalPreviousSeconds = timerManager.previousSegments.reduce(0) { $0 + $1.seconds }
                         let totalLiveSeconds = liveSegs.reduce(0) { $0 + $1.seconds }
                         let totalSeconds = totalPreviousSeconds + totalLiveSeconds
                         // Apply minimum fill if total fill would be less than ~60 seconds (about 4px on typical screen)
@@ -892,13 +894,20 @@ struct BlockItemView: View {
                             ? effectiveVisualFill / Double(totalSegmentSeconds)
                             : 1.0 / 1200.0
 
+                        // Apply minimum fill for very short sessions (< 60 seconds total)
+                        // This ensures visible fill even when stopped early
+                        let applyMinFill = totalSegmentSeconds < 60
+
                         ForEach(Array(segments.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: segments, scaleFactor: scaleFactor)
-                            let segmentWidth = Double(segment.seconds) * scaleFactor
+                            let rawWidth = geo.size.width * min(Double(segment.seconds) * scaleFactor, 1.0 - segmentStart)
+                            // Ensure minimum 4px visible fill for the last segment if total is very short
+                            let isLastSegment = index == segments.count - 1
+                            let fillWidth = (isLastSegment && applyMinFill) ? max(4, rawWidth) : rawWidth
 
                             Rectangle()
                                 .fill(colorForSegment(segment))
-                                .frame(width: geo.size.width * min(segmentWidth, 1.0 - segmentStart))
+                                .frame(width: fillWidth)
                                 .offset(x: geo.size.width * segmentStart)
                         }
                     }
