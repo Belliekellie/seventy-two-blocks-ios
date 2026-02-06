@@ -282,15 +282,40 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: timerManager.showPausedExpiry)
         // Dialog priority: Timer/Break complete dialogs take precedence over planned dialog
         .onChange(of: timerManager.showTimerComplete) { _, newValue in
+            if newValue {
+                // Timer complete takes priority over all other dialogs
+                if showPlannedBlockDialog {
+                    showPlannedBlockDialog = false
+                    plannedBlock = nil
+                }
+                // Dismiss paused expiry - timer complete should never coexist
+                if timerManager.showPausedExpiry {
+                    timerManager.showPausedExpiry = false
+                }
+            }
+        }
+        .onChange(of: timerManager.showBreakComplete) { _, newValue in
+            if newValue {
+                // Break complete takes priority over other dialogs
+                if showPlannedBlockDialog {
+                    showPlannedBlockDialog = false
+                    plannedBlock = nil
+                }
+                // Dismiss paused expiry - break complete should never coexist
+                if timerManager.showPausedExpiry {
+                    timerManager.showPausedExpiry = false
+                }
+            }
+        }
+        // Paused expiry takes priority over planned dialog
+        .onChange(of: timerManager.showPausedExpiry) { _, newValue in
             if newValue && showPlannedBlockDialog {
                 showPlannedBlockDialog = false
                 plannedBlock = nil
             }
-        }
-        .onChange(of: timerManager.showBreakComplete) { _, newValue in
-            if newValue && showPlannedBlockDialog {
-                showPlannedBlockDialog = false
-                plannedBlock = nil
+            // Dismiss paused expiry if timer complete/break complete shows (defensive - shouldn't happen)
+            if newValue && (timerManager.showTimerComplete || timerManager.showBreakComplete) {
+                timerManager.showPausedExpiry = false
             }
         }
         .sheet(isPresented: Binding(
