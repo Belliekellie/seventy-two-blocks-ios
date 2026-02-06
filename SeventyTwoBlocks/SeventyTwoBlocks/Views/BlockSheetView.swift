@@ -506,13 +506,21 @@ struct BlockSheetView: View {
 
                 // Label section with favorites and presets
                 Section {
-                    // Text input with favorite toggle
+                    // Text input with clear button and favorite toggle
                     HStack {
                         TextField("What are you working on?", text: $label)
                             .focused($labelFieldFocused)
                             .submitLabel(.done)
                             #if os(iOS)
                             .textInputAutocapitalization(.sentences)
+                            .toolbar {
+                                ToolbarItemGroup(placement: .keyboard) {
+                                    Spacer()
+                                    Button("Done") {
+                                        labelFieldFocused = false
+                                    }
+                                }
+                            }
                             #endif
                             .onChange(of: label) { _, newValue in
                                 // Enforce character limit
@@ -538,6 +546,25 @@ struct BlockSheetView: View {
                                     dismiss()
                                 }
                             }
+
+                        // Clear button (x) when there's text
+                        if !label.isEmpty {
+                            Button {
+                                label = ""
+                                hasChanges = true
+                                if isTimerRunningForThisBlock {
+                                    timerManager.currentLabel = nil
+                                    if timerManager.isBreak {
+                                        timerManager.lastWorkLabel = nil
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.gray)
+                                    .font(.title3)
+                            }
+                            .buttonStyle(.plain)
+                        }
 
                         // Star button to toggle favorite
                         if let normalizedLabel = normalizeLabel(label) {
@@ -568,51 +595,59 @@ struct BlockSheetView: View {
 
                             FlowLayout(spacing: 6) {
                                 ForEach(favoriteLabels, id: \.self) { favLabel in
-                                    Button {
-                                        // Toggle behavior - if already selected, clear it
-                                        if label == favLabel {
-                                            label = ""
-                                            if isTimerRunningForThisBlock {
-                                                timerManager.currentLabel = nil
-                                                if timerManager.isBreak {
-                                                    timerManager.lastWorkLabel = nil
+                                    HStack(spacing: 0) {
+                                        Button {
+                                            // If not selected, select it
+                                            if label != favLabel {
+                                                label = favLabel
+                                                hasChanges = true
+                                                if isTimerRunningForThisBlock {
+                                                    timerManager.currentLabel = favLabel
+                                                    if timerManager.isBreak {
+                                                        timerManager.lastWorkLabel = favLabel
+                                                    }
+                                                }
+                                                // Auto-save and dismiss when selecting a label
+                                                Task {
+                                                    await saveBlock()
+                                                    dismiss()
                                                 }
                                             }
-                                        } else {
-                                            label = favLabel
-                                            if isTimerRunningForThisBlock {
-                                                timerManager.currentLabel = favLabel
-                                                if timerManager.isBreak {
-                                                    timerManager.lastWorkLabel = favLabel
-                                                }
-                                            }
-                                            // Auto-save and dismiss when selecting a label
-                                            Task {
-                                                await saveBlock()
-                                                dismiss()
-                                            }
-                                        }
-                                        hasChanges = true
-                                    } label: {
-                                        HStack(spacing: 4) {
+                                        } label: {
                                             Text(favLabel)
                                                 .font(.caption)
-                                            if label == favLabel {
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 10, weight: .bold))
-                                            }
                                         }
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(label == favLabel ? categoryColor.opacity(0.2) : Color.gray.opacity(0.1))
-                                        .foregroundStyle(label == favLabel ? categoryColor : .primary)
-                                        .clipShape(Capsule())
-                                        .overlay(
-                                            Capsule()
-                                                .strokeBorder(label == favLabel ? categoryColor : Color.gray.opacity(0.3), lineWidth: 1)
-                                        )
+                                        .buttonStyle(.plain)
+
+                                        // Show X button when this label is selected
+                                        if label == favLabel {
+                                            Button {
+                                                label = ""
+                                                hasChanges = true
+                                                if isTimerRunningForThisBlock {
+                                                    timerManager.currentLabel = nil
+                                                    if timerManager.isBreak {
+                                                        timerManager.lastWorkLabel = nil
+                                                    }
+                                                }
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 12))
+                                                    .foregroundStyle(.white.opacity(0.8))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.leading, 4)
+                                        }
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(label == favLabel ? categoryColor.opacity(0.2) : Color.gray.opacity(0.1))
+                                    .foregroundStyle(label == favLabel ? categoryColor : .primary)
+                                    .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(label == favLabel ? categoryColor : Color.gray.opacity(0.3), lineWidth: 1)
+                                    )
                                     .contextMenu {
                                         // Remove from favorites
                                         Button(role: .destructive) {
@@ -643,51 +678,59 @@ struct BlockSheetView: View {
 
                             FlowLayout(spacing: 6) {
                                 ForEach(categoryLabels, id: \.self) { catLabel in
-                                    Button {
-                                        // Toggle behavior
-                                        if label == catLabel {
-                                            label = ""
-                                            if isTimerRunningForThisBlock {
-                                                timerManager.currentLabel = nil
-                                                if timerManager.isBreak {
-                                                    timerManager.lastWorkLabel = nil
+                                    HStack(spacing: 0) {
+                                        Button {
+                                            // If not selected, select it
+                                            if label != catLabel {
+                                                label = catLabel
+                                                hasChanges = true
+                                                if isTimerRunningForThisBlock {
+                                                    timerManager.currentLabel = catLabel
+                                                    if timerManager.isBreak {
+                                                        timerManager.lastWorkLabel = catLabel
+                                                    }
+                                                }
+                                                // Auto-save and dismiss when selecting a label
+                                                Task {
+                                                    await saveBlock()
+                                                    dismiss()
                                                 }
                                             }
-                                        } else {
-                                            label = catLabel
-                                            if isTimerRunningForThisBlock {
-                                                timerManager.currentLabel = catLabel
-                                                if timerManager.isBreak {
-                                                    timerManager.lastWorkLabel = catLabel
-                                                }
-                                            }
-                                            // Auto-save and dismiss when selecting a label
-                                            Task {
-                                                await saveBlock()
-                                                dismiss()
-                                            }
-                                        }
-                                        hasChanges = true
-                                    } label: {
-                                        HStack(spacing: 4) {
+                                        } label: {
                                             Text(catLabel)
                                                 .font(.caption)
-                                            if label == catLabel {
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 10, weight: .bold))
-                                            }
                                         }
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(label == catLabel ? categoryColor.opacity(0.2) : Color.gray.opacity(0.1))
-                                        .foregroundStyle(label == catLabel ? categoryColor : .primary)
-                                        .clipShape(Capsule())
-                                        .overlay(
-                                            Capsule()
-                                                .strokeBorder(label == catLabel ? categoryColor : Color.gray.opacity(0.3), lineWidth: 1)
-                                        )
+                                        .buttonStyle(.plain)
+
+                                        // Show X button when this label is selected
+                                        if label == catLabel {
+                                            Button {
+                                                label = ""
+                                                hasChanges = true
+                                                if isTimerRunningForThisBlock {
+                                                    timerManager.currentLabel = nil
+                                                    if timerManager.isBreak {
+                                                        timerManager.lastWorkLabel = nil
+                                                    }
+                                                }
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 12))
+                                                    .foregroundStyle(.white.opacity(0.8))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.leading, 4)
+                                        }
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(label == catLabel ? categoryColor.opacity(0.2) : Color.gray.opacity(0.1))
+                                    .foregroundStyle(label == catLabel ? categoryColor : .primary)
+                                    .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(label == catLabel ? categoryColor : Color.gray.opacity(0.3), lineWidth: 1)
+                                    )
                                     .contextMenu {
                                         // Add to favorites
                                         Button {
@@ -837,6 +880,7 @@ struct BlockSheetView: View {
             .navigationTitle(isViewingPastDay ? "Past Block" : (isFutureBlock ? "Future Block" : "Block Details"))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -882,12 +926,14 @@ struct BlockSheetView: View {
                 }
             }
             .task {
-                print("🔵 BlockSheet .task - loading categories and favorites...")
-                await blockManager.loadCategories()
-                await blockManager.loadFavoriteLabels()
-                print("🔵 Categories loaded: \(blockManager.categories.count), Favorites: \(blockManager.favoriteLabels.count)")
-                for cat in blockManager.categories {
-                    print("🔵   \(cat.id): \(cat.labels?.count ?? 0) labels")
+                // Only load if not already loaded (prevents delay on re-opening)
+                if blockManager.categories.isEmpty {
+                    print("🔵 BlockSheet .task - loading categories...")
+                    await blockManager.loadCategories()
+                }
+                if blockManager.favoriteLabels.isEmpty {
+                    print("🔵 BlockSheet .task - loading favorites...")
+                    await blockManager.loadFavoriteLabels()
                 }
             }
             .alert("Reset Block?", isPresented: $showResetConfirmation) {
