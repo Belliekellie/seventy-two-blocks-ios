@@ -298,15 +298,21 @@ final class TimerManager: ObservableObject {
         // Capture visual fill BEFORE clearing state
         let capturedVisualFill = currentVisualFill
 
-        // CRITICAL: Call the callback BEFORE clearing state
-        // This ensures the local blocks array is updated before SwiftUI re-renders
-        // due to @Published property changes from stopTimerInternal()
+        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count), visualFill: \(String(format: "%.1f%%", capturedVisualFill * 100))")
+
+        // Stop tick timers immediately (but don't clear @Published state yet)
+        timer?.invalidate()
+        timer = nil
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+
+        // Save segments FIRST - callback updates local blocks array synchronously
         if let blockIndex = blockIndex, let date = date, !finalSegments.isEmpty {
             onTimerComplete?(blockIndex, date, wasBreak, used, sessionInitialTime, finalSegments, capturedVisualFill)
         }
 
-        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count), visualFill: \(String(format: "%.1f%%", capturedVisualFill * 100))")
-
+        // NOW clear @Published state - blocks array is already updated
+        // This triggers SwiftUI re-render, but blocks have correct data
         stopTimerInternal()
 
         // Notify widget of timer stop
