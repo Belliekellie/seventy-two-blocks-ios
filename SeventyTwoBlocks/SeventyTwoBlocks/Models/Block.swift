@@ -109,6 +109,7 @@ struct Block: Codable, Identifiable {
     var activeRunSnapshot: Run?
     var segments: [BlockSegment]
     var usedSeconds: Int
+    var visualFill: Double  // 0.0 to 1.0 - the actual visual fill reached during active timer
     let createdAt: String
     var updatedAt: String
 
@@ -126,8 +127,59 @@ struct Block: Codable, Identifiable {
         case activeRunSnapshot = "active_run_snapshot"
         case segments
         case usedSeconds = "used_seconds"
+        case visualFill = "visual_fill"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    // Custom decoder to handle missing visualFill field (added in migration)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(String.self, forKey: .id)
+        userId = try container.decode(String.self, forKey: .userId)
+        date = try container.decode(String.self, forKey: .date)
+        blockIndex = try container.decode(Int.self, forKey: .blockIndex)
+        isMuted = try container.decode(Bool.self, forKey: .isMuted)
+        isActivated = try container.decode(Bool.self, forKey: .isActivated)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        status = try container.decode(BlockStatus.self, forKey: .status)
+        progress = try container.decode(Double.self, forKey: .progress)
+        breakProgress = try container.decode(Double.self, forKey: .breakProgress)
+        runs = try container.decodeIfPresent([Run].self, forKey: .runs)
+        activeRunSnapshot = try container.decodeIfPresent(Run.self, forKey: .activeRunSnapshot)
+        segments = try container.decodeIfPresent([BlockSegment].self, forKey: .segments) ?? []
+        usedSeconds = try container.decodeIfPresent(Int.self, forKey: .usedSeconds) ?? 0
+        // visualFill may be missing in older records - default to 0.0
+        // For legacy done blocks with segments, we'll compute it from segments when needed
+        visualFill = try container.decodeIfPresent(Double.self, forKey: .visualFill) ?? 0.0
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+    }
+
+    // Memberwise initializer for creating blocks programmatically
+    init(id: String, userId: String, date: String, blockIndex: Int, isMuted: Bool, isActivated: Bool, category: String?, label: String?, note: String?, status: BlockStatus, progress: Double, breakProgress: Double, runs: [Run]?, activeRunSnapshot: Run?, segments: [BlockSegment], usedSeconds: Int, visualFill: Double = 0.0, createdAt: String, updatedAt: String) {
+        self.id = id
+        self.userId = userId
+        self.date = date
+        self.blockIndex = blockIndex
+        self.isMuted = isMuted
+        self.isActivated = isActivated
+        self.category = category
+        self.label = label
+        self.note = note
+        self.status = status
+        self.progress = progress
+        self.breakProgress = breakProgress
+        self.runs = runs
+        self.activeRunSnapshot = activeRunSnapshot
+        self.segments = segments
+        self.usedSeconds = usedSeconds
+        self.visualFill = visualFill
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 
     // Custom encode to ensure nil values are encoded as null (not omitted)
@@ -151,6 +203,7 @@ struct Block: Codable, Identifiable {
         try container.encode(Int(breakProgress), forKey: .breakProgress)
         try container.encode(segments, forKey: .segments)
         try container.encode(usedSeconds, forKey: .usedSeconds)
+        try container.encode(visualFill, forKey: .visualFill)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         // Don't encode runs and activeRunSnapshot - they may not exist in the DB

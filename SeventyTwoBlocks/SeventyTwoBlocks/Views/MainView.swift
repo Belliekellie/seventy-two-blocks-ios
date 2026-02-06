@@ -466,24 +466,39 @@ struct MainView: View {
     // MARK: - Timer Callbacks
 
     private func setupTimerCallbacks() {
-        timerManager.onTimerComplete = { blockIndex, date, isBreak, secondsUsed, initialTime, segments in
+        timerManager.onTimerComplete = { blockIndex, date, isBreak, secondsUsed, initialTime, segments, visualFill in
             // Track this block as having timer usage
             self.blocksWithTimerUsage.insert(blockIndex)
 
+            // Determine if this was a natural completion (timer hit 0) vs manual stop
+            // Natural completion: secondsUsed == initialTime (timer ran to block boundary)
+            // Use 5-second tolerance for timer tick timing jitter
+            let isNaturalCompletion = secondsUsed >= initialTime - 5
+
+            // Also check actual time in case of edge cases
+            let blockEnd = Block.blockEndDate(for: blockIndex)
+            let blockTimeElapsed = Date() >= blockEnd
+
+            // Mark done if timer ran to completion OR block time has passed
+            let shouldMarkDone = isNaturalCompletion || blockTimeElapsed
+
             // IMMEDIATELY update local state (synchronous, no race condition)
-            // This ensures the grid shows correct state before the async DB save finishes
-            // Status = .done means "block was worked on" (shows time breakdown UI)
-            // Fill is determined by segments, not status (so partial fills display correctly)
+            // Fill is determined by visualFill, not status (so partial fills display correctly)
             let actualProgress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
             if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
-                self.blockManager.blocks[idx].status = .done
+                if shouldMarkDone {
+                    self.blockManager.blocks[idx].status = .done
+                    print("✅ Marked block \(blockIndex) as .done (natural: \(isNaturalCompletion), elapsed: \(blockTimeElapsed)), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%")
+                } else {
+                    print("💾 Saved block \(blockIndex) segments (block still active), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%")
+                }
                 self.blockManager.blocks[idx].segments = segments
                 self.blockManager.blocks[idx].usedSeconds = secondsUsed
                 self.blockManager.blocks[idx].progress = actualProgress
-                print("✅ Marked block \(blockIndex) as .done, progress: \(Int(actualProgress))%")
+                self.blockManager.blocks[idx].visualFill = visualFill
             }
             Task {
-                await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments)
+                await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments, visualFill: visualFill, blockTimeElapsed: shouldMarkDone)
             }
         }
 
@@ -537,7 +552,7 @@ struct MainView: View {
         }
     }
 
-    private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment]) async {
+    private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment], visualFill: Double, blockTimeElapsed: Bool) async {
         guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
             print("⚠️ saveTimerCompletion: block \(blockIndex) not found in local array, skipping DB save")
             return
@@ -550,17 +565,20 @@ struct MainView: View {
         var updatedBlock = block
         updatedBlock.usedSeconds = secondsUsed
         updatedBlock.progress = actualProgress
+        updatedBlock.visualFill = visualFill  // Save actual visual fill reached
 
-        // Always mark as done - user worked on this block, so it's "complete"
-        // The fill is determined by segments (can be partial), not by status
-        updatedBlock.status = .done
+        // Only mark as done if block time has elapsed
+        // User might stop mid-block and resume later in the same block window
+        if blockTimeElapsed {
+            updatedBlock.status = .done
+        }
         updatedBlock.category = timerManager.currentCategory ?? block.category
         updatedBlock.label = timerManager.currentLabel ?? block.label
 
         // Use the segments passed from the callback (captured before clearing)
         updatedBlock.segments = segments
 
-        print("💾 saveTimerCompletion: block \(blockIndex), used \(secondsUsed)s, progress \(Int(actualProgress))%, segments: \(segments.count)")
+        print("💾 saveTimerCompletion: block \(blockIndex), used \(secondsUsed)s, progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, segments: \(segments.count), done: \(blockTimeElapsed)")
 
         await blockManager.saveBlock(updatedBlock)
         await blockManager.reloadBlocks()

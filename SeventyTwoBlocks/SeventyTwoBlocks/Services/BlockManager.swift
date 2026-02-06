@@ -185,6 +185,7 @@ final class BlockManager: ObservableObject {
                 activeRunSnapshot: block.activeRunSnapshot,
                 segments: block.segments,
                 usedSeconds: block.usedSeconds,
+                visualFill: block.visualFill,
                 createdAt: block.createdAt,
                 updatedAt: ISO8601DateFormatter().string(from: Date())
             )

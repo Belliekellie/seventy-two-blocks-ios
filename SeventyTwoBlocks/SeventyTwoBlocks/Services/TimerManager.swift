@@ -63,9 +63,10 @@ final class TimerManager: ObservableObject {
     private var breakNotifyAt: Date?  // When to fire the 5-min break popup (timer keeps running)
 
     // Callbacks
-    // onTimerComplete: blockIndex, date, isBreak, secondsUsed, initialTime, segments (finalized)
+    // onTimerComplete: blockIndex, date, isBreak, secondsUsed, initialTime, segments (finalized), visualFill (0..1)
     // initialTime is passed so caller can detect natural completion (secondsUsed ~= initialTime)
-    var onTimerComplete: ((Int, String, Bool, Int, Int, [BlockSegment]) -> Void)?
+    // visualFill is the actual visual fill proportion reached during timer sessions
+    var onTimerComplete: ((Int, String, Bool, Int, Int, [BlockSegment], Double) -> Void)?
     var onSaveSnapshot: ((Int, String, Run) -> Void)?  // blockIndex, date, snapshot
     var onWidgetUpdate: (() -> Void)?
 
@@ -91,6 +92,22 @@ final class TimerManager: ObservableObject {
     var progressPercent: Double {
         guard initialTime > 0 else { return 0 }
         return Double(secondsUsed) / Double(initialTime) * 100
+    }
+
+    /// Current visual fill proportion (0..1) - where the color bar has actually reached
+    /// This accounts for previous segments + live segments + current in-progress segment
+    /// Used for saving to block.visualFill so render shows actual fill, not forced 100%
+    var currentVisualFill: Double {
+        // Start with previous segments' visual proportion
+        var fill = previousVisualProportion
+
+        // Add live segments using the session scale factor
+        let liveSegs = liveSegmentsIncludingCurrent
+        for seg in liveSegs {
+            fill += Double(seg.seconds) * sessionScaleFactor
+        }
+
+        return min(fill, 1.0)
     }
 
     /// All segments including previous segments and the current in-progress "tail" segment
@@ -278,11 +295,14 @@ final class TimerManager: ObservableObject {
         // Capture initialTime before clearing
         let sessionInitialTime = initialTime
 
+        // Capture visual fill BEFORE clearing state
+        let capturedVisualFill = currentVisualFill
+
         stopTimerInternal()
 
         if markComplete, let blockIndex = blockIndex, let date = date {
-            // Pass ALL segments (previous + live) to the callback
-            onTimerComplete?(blockIndex, date, wasBreak, used, sessionInitialTime, finalSegments)
+            // Pass ALL segments (previous + live) to the callback along with visual fill
+            onTimerComplete?(blockIndex, date, wasBreak, used, sessionInitialTime, finalSegments, capturedVisualFill)
         }
 
         // Notify widget of timer stop
@@ -294,25 +314,38 @@ final class TimerManager: ObservableObject {
     func pauseTimer() {
         guard isActive else { return }
 
+        // Invalidate timers first (synchronous, immediate)
         timer?.invalidate()
         timer = nil
         autosaveTimer?.invalidate()
         autosaveTimer = nil
 
-        // Store remaining time
-        if let endAt = endAt {
-            timeLeft = max(0, Int(endAt.timeIntervalSinceNow))
+        // Use current secondsUsed (based on displayed timeLeft, not recalculated)
+        // This prevents the 1-second shave when pausing mid-tick
+        let pauseSecondsUsed = secondsUsed
+
+        // Finalize segment data
+        let segmentDuration = pauseSecondsUsed - currentSegmentStartElapsed
+        if segmentDuration > 0 {
+            let segment = BlockSegment(
+                type: currentSegmentType,
+                seconds: segmentDuration,
+                category: currentSegmentType == .work ? currentCategory : nil,
+                label: currentSegmentType == .work ? currentLabel : nil,
+                startElapsed: currentSegmentStartElapsed
+            )
+            liveSegments.append(segment)
         }
 
-        // Finalize current segment so it's saved in liveSegments
-        finalizeCurrentSegment()
+        // Store pause position
+        secondsUsedAtPause = pauseSecondsUsed
+        currentSegmentStartElapsed = pauseSecondsUsed
 
-        // Store seconds used so fill doesn't jump on resume
-        secondsUsedAtPause = secondsUsed
-
+        // Update state - timeLeft stays as-is (what user saw on screen)
         isActive = false
         isPaused = true
-        print("⏱️ Timer paused at \(timeLeft)s remaining, secondsUsed=\(secondsUsedAtPause), isPaused=\(isPaused)")
+
+        print("⏱️ Timer paused at \(timeLeft)s remaining, secondsUsed=\(secondsUsedAtPause)")
     }
 
     func resumeTimer() {
@@ -533,22 +566,25 @@ final class TimerManager: ObservableObject {
 
     private func startTickTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
+        // Schedule on main run loop for immediate UI updates
+        timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
             Task { @MainActor [weak self] in
                 self?.tick()
             }
         }
+        RunLoop.main.add(timer!, forMode: .common)
     }
 
     private func startAutosaveTimer() {
         autosaveTimer?.invalidate()
-        autosaveTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
+        autosaveTimer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
             Task { @MainActor [weak self] in
                 self?.saveSnapshot()
             }
         }
+        RunLoop.main.add(autosaveTimer!, forMode: .common)
     }
 
     private func tick() {
@@ -620,10 +656,14 @@ final class TimerManager: ObservableObject {
         // Ensure secondsUsed equals initialTime at completion
         progress = 100
 
+        // For natural completion (timer hit 0), visual fill should be 1.0 (100%)
+        // This is because the scale factor is calculated so fill reaches 100% at block boundary
+        let completionVisualFill = 1.0
+
         // Notify completion with captured segments
         // For natural completion, secondsUsed == initialTime (timer reached 0)
         if let blockIndex = blockIndex, let date = date {
-            onTimerComplete?(blockIndex, date, wasBreak, initialTime, initialTime, finalSegments)
+            onTimerComplete?(blockIndex, date, wasBreak, initialTime, initialTime, finalSegments, completionVisualFill)
         }
 
         // Always show timer complete dialog at block boundary (block time is up)
@@ -763,8 +803,10 @@ final class TimerManager: ObservableObject {
     func savePartialBlockData() {
         if let blockIndex = currentBlockIndex, let date = currentDate {
             let finalSegments = previousSegments + liveSegments
+            // Calculate visual fill based on paused position
+            let partialVisualFill = currentVisualFill
             // Don't mark complete - just save the partial progress
-            onTimerComplete?(blockIndex, date, isBreak, secondsUsedAtPause, initialTime, finalSegments)
+            onTimerComplete?(blockIndex, date, isBreak, secondsUsedAtPause, initialTime, finalSegments, partialVisualFill)
         }
     }
 

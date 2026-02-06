@@ -852,14 +852,13 @@ struct BlockItemView: View {
                         let totalLiveSeconds = liveSegs.reduce(0) { $0 + $1.seconds }
                         let totalSeconds = totalPreviousSeconds + totalLiveSeconds
                         // Apply minimum fill if total fill would be less than ~60 seconds (about 4px on typical screen)
-                        // This ensures visible fill even after immediate pause/resume
+                        // This ensures visible fill even when paused early
                         let applyMinFill = totalSeconds < 60
                         // Use composite id including seconds so SwiftUI detects changes and re-renders
                         ForEach(Array(liveSegs.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
                             let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
                             // Subtle initial sliver (4px) so user sees timer started
-                            // Animation handles smooth visible progress after that
                             let isLastSegment = index == liveSegs.count - 1
                             let fillWidth = (isLastSegment && applyMinFill) ? max(4, rawWidth) : rawWidth
 
@@ -867,22 +866,30 @@ struct BlockItemView: View {
                                 .fill(colorForSegment(segment))
                                 .frame(width: fillWidth)
                                 .offset(x: geo.size.width * min(segmentStart, 1.0))
-                                .animation(.linear(duration: 1), value: fillWidth)
+                                // Only animate during active timing, not pause/resume transitions
+                                .animation(timerManager.isActive ? .linear(duration: 1) : nil, value: fillWidth)
                         }
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else if let segments = block?.segments, !segments.isEmpty {
                 // Block with saved segments (done OR stopped mid-way) - render saved segments
-                // For done blocks: use scaleFactor that fills to 100% (matches live rendering)
-                // For non-done blocks: use standard 1/1200 to show actual proportion
+                // Use visualFill to determine actual fill proportion reached during timer sessions
+                // visualFill is LITERAL - it's exactly where the color bar reached
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         // Calculate total seconds from all segments
                         let totalSegmentSeconds = segments.reduce(0) { $0 + $1.seconds }
-                        // Done blocks fill to 100%, non-done show actual proportion
-                        let scaleFactor = isDone && totalSegmentSeconds > 0
-                            ? 1.0 / Double(totalSegmentSeconds)
+
+                        // Use saved visualFill if available, otherwise calculate from segments
+                        // For legacy blocks without visualFill, use segments/1200 as fallback
+                        let savedVisualFill = block?.visualFill ?? 0.0
+                        let effectiveVisualFill = savedVisualFill > 0 ? savedVisualFill : Double(totalSegmentSeconds) / 1200.0
+
+                        // Scale factor maps segment seconds to the visual fill proportion
+                        // This ensures the fill renders at exactly the proportion it reached
+                        let scaleFactor = totalSegmentSeconds > 0
+                            ? effectiveVisualFill / Double(totalSegmentSeconds)
                             : 1.0 / 1200.0
 
                         ForEach(Array(segments.enumerated()), id: \.element.compositeId) { index, segment in
@@ -980,6 +987,20 @@ struct BlockItemView: View {
                         .tracking(0.3)
                         .lineLimit(1)
                         .foregroundStyle(labelTextColor)
+                } else if hasBreakSegments && !hasWorkSegments {
+                    // Non-done block with only break segments (e.g., paused/stopped during break)
+                    Text("BREAK")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.3)
+                        .lineLimit(1)
+                        .foregroundStyle(labelTextColor)
+                } else if hasSegments, let doneLabel = doneBlockDisplayLabel {
+                    // Non-done block with segments (e.g., stopped mid-way) - show the label
+                    Text(doneLabel.uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.3)
+                        .lineLimit(1)
+                        .foregroundStyle(labelTextColor)
                 } else if let label = block?.label, !label.isEmpty {
                     Text(label.uppercased())
                         .font(.system(size: 9, weight: .bold))
@@ -1053,6 +1074,7 @@ struct BlockItemView: View {
                     activeRunSnapshot: nil,
                     segments: [],
                     usedSeconds: 0,
+                    visualFill: 0,
                     createdAt: "",
                     updatedAt: ""
                 )
