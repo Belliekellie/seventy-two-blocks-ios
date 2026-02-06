@@ -233,7 +233,8 @@ struct OneThingView: View {
         goalManager.addAction(trimmed, for: selectedDate)
         newActionText = ""
         AudioManager.shared.triggerHapticFeedback(.light)
-        // Keep input open for adding more actions
+        // Keep input open and focused for adding more actions
+        actionFieldFocused = true
     }
 }
 

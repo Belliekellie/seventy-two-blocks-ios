@@ -432,9 +432,9 @@ struct BlockItemView: View {
         isViewingToday && blockIndex == Block.getCurrentBlockIndex()
     }
 
-    /// Timer is actively running on this block - only possible on today's blocks
+    /// Timer is actively running or paused on this block - only possible on today's blocks
     private var isTimerActiveOnThisBlock: Bool {
-        isViewingToday && timerManager.isActive && timerManager.currentBlockIndex == blockIndex
+        isViewingToday && (timerManager.isActive || timerManager.isPaused) && timerManager.currentBlockIndex == blockIndex
     }
 
     /// Past block - either viewing a past day (all blocks are past) or viewing today with earlier block
@@ -822,6 +822,10 @@ struct BlockItemView: View {
                 // Previous segments use 1/1200 scale, live segments use sessionScaleFactor
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
+                        // IMPORTANT: Access timerManager.progress to force SwiftUI to re-render every tick
+                        // Without this, SwiftUI doesn't track the computed property dependencies
+                        let _ = timerManager.progress
+
                         // Calculate total fill to determine if we're at 100%
                         let previousScale = 1.0 / 1200.0
                         let liveStartOffset = timerManager.previousVisualProportion
@@ -831,7 +835,7 @@ struct BlockItemView: View {
                         let visualScale = 0.975
 
                         // 1. Render previous segments (from earlier timer sessions)
-                        ForEach(Array(timerManager.previousSegments.enumerated()), id: \.offset) { index, segment in
+                        ForEach(Array(timerManager.previousSegments.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: timerManager.previousSegments, scaleFactor: previousScale) * visualScale
                             let segmentWidth = Double(segment.seconds) * previousScale * visualScale
 
@@ -843,14 +847,19 @@ struct BlockItemView: View {
 
                         // 2. Render live segments (current session) starting after previous segments
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
-                        // Only apply minimum fill on a completely fresh block (no prior segments).
-                        // Once the block has any fill from a previous session or a completed
-                        // segment (e.g. category switch), the natural fill is already visible.
-                        // This prevents a jump if the user stops and restarts on the same block.
-                        let applyMinFill = timerManager.previousSegments.isEmpty && timerManager.liveSegments.isEmpty
-                        ForEach(Array(liveSegs.enumerated()), id: \.offset) { index, segment in
+                        // Calculate total seconds from all segments to determine if min fill applies
+                        let totalPreviousSeconds = timerManager.previousSegments.reduce(0) { $0 + $1.seconds }
+                        let totalLiveSeconds = liveSegs.reduce(0) { $0 + $1.seconds }
+                        let totalSeconds = totalPreviousSeconds + totalLiveSeconds
+                        // Apply minimum fill if total fill would be less than ~60 seconds (about 4px on typical screen)
+                        // This ensures visible fill even after immediate pause/resume
+                        let applyMinFill = totalSeconds < 60
+                        // Use composite id including seconds so SwiftUI detects changes and re-renders
+                        ForEach(Array(liveSegs.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
                             let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
+                            // Subtle initial sliver (4px) so user sees timer started
+                            // Animation handles smooth visible progress after that
                             let isLastSegment = index == liveSegs.count - 1
                             let fillWidth = (isLastSegment && applyMinFill) ? max(4, rawWidth) : rawWidth
 
@@ -858,6 +867,7 @@ struct BlockItemView: View {
                                 .fill(colorForSegment(segment))
                                 .frame(width: fillWidth)
                                 .offset(x: geo.size.width * min(segmentStart, 1.0))
+                                .animation(.linear(duration: 1), value: fillWidth)
                         }
                     }
                 }
@@ -875,7 +885,7 @@ struct BlockItemView: View {
                             ? 1.0 / Double(totalSegmentSeconds)
                             : 1.0 / 1200.0
 
-                        ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                        ForEach(Array(segments.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: segments, scaleFactor: scaleFactor)
                             let segmentWidth = Double(segment.seconds) * scaleFactor
 
@@ -938,7 +948,7 @@ struct BlockItemView: View {
                 } else if isSkipped && hasSegments, let doneLabel = doneBlockDisplayLabel {
                     // Skipped blocks with data should show their label, not "SKIPPED"
                     Text(doneLabel.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9, weight: .bold))
                         .tracking(0.3)
                         .lineLimit(1)
                         .foregroundStyle(labelTextColor)
@@ -946,19 +956,19 @@ struct BlockItemView: View {
                     // Break mode takes priority — don't leak the work label
                     if timerManager.isBreak {
                         Text("BREAK")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9, weight: .bold))
                             .tracking(0.3)
                             .lineLimit(1)
                             .foregroundStyle(labelTextColor)
                     } else if let timerLabel = timerManager.currentLabel, !timerLabel.isEmpty {
                         Text(timerLabel.uppercased())
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9, weight: .bold))
                             .tracking(0.3)
                             .lineLimit(1)
                             .foregroundStyle(labelTextColor)
                     } else if let timerCatLabel = timerCategoryLabel {
                         Text(timerCatLabel.uppercased())
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9, weight: .bold))
                             .tracking(0.3)
                             .lineLimit(1)
                             .foregroundStyle(labelTextColor)
@@ -966,19 +976,19 @@ struct BlockItemView: View {
                 } else if isDone, let doneLabel = doneBlockDisplayLabel {
                     // Done blocks: show dominant label with +brk suffix if break was taken
                     Text(doneLabel.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9, weight: .bold))
                         .tracking(0.3)
                         .lineLimit(1)
                         .foregroundStyle(labelTextColor)
                 } else if let label = block?.label, !label.isEmpty {
                     Text(label.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9, weight: .bold))
                         .tracking(0.3)
                         .lineLimit(1)
                         .foregroundStyle(labelTextColor)
                 } else if let catLabel = categoryLabel {
                     Text(catLabel.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9, weight: .bold))
                         .tracking(0.3)
                         .lineLimit(1)
                         .foregroundStyle(labelTextColor)

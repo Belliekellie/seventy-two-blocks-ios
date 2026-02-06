@@ -42,7 +42,8 @@ struct StickyBottomBar: View {
                 HStack(spacing: 0) {
                     // Focus Sounds (left)
                     VStack(spacing: 4) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 6) {
+                            // Small play/stop toggle button
                             Button {
                                 if soundManager.isPlaying {
                                     soundManager.stop()
@@ -52,24 +53,31 @@ struct StickyBottomBar: View {
                                     soundManager.play()
                                 }
                             } label: {
-                                Image(systemName: soundManager.isPlaying ? "speaker.wave.2.fill" : soundManager.soundIcon(for: preferredFocusSound))
-                                    .font(.subheadline)
-                                    .foregroundStyle(soundManager.isPlaying ? .blue : .secondary)
-                                    .frame(height: 22)
+                                Image(systemName: soundManager.isPlaying ? "stop.fill" : "play.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 18, height: 18)
+                                    .background(soundManager.isPlaying ? Color.red : Color.blue)
+                                    .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
 
+                            // Sound name pill (opens picker)
                             Button {
                                 showSoundPicker = true
                             } label: {
                                 HStack(spacing: 4) {
                                     Text(soundManager.shortSoundName(for: preferredFocusSound))
-                                        .font(.subheadline.weight(.semibold))
+                                        .font(.caption.weight(.semibold))
                                         .lineLimit(1)
                                     Image(systemName: "chevron.up")
-                                        .font(.system(size: 8, weight: .semibold))
-                                        .foregroundStyle(.secondary)
+                                        .font(.system(size: 7, weight: .semibold))
                                 }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.gray.opacity(0.12))
+                                .foregroundStyle(.primary)
+                                .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
                         }
@@ -156,18 +164,6 @@ struct FocusSoundPickerSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                if soundManager.isPlaying {
-                    HStack {
-                        Image(systemName: "waveform")
-                            .foregroundStyle(.blue)
-                            .symbolEffect(.variableColor.iterative)
-                        Text("Now Playing")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.blue)
-                    }
-                    .padding(.top)
-                }
-
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
                     ForEach(FocusSoundManager.availableSounds, id: \.id) { sound in
                         let isCurrentlyPlaying = soundManager.isPlaying && soundManager.currentSound == sound.id
@@ -215,7 +211,7 @@ struct FocusSoundPickerSheet: View {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.top, soundManager.isPlaying ? 0 : 12)
+                .padding(.top, 12)
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

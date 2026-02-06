@@ -19,6 +19,7 @@ struct TimerCompleteDialog: View {
 
     @EnvironmentObject var blockManager: BlockManager
     @State private var countdown: Int = 25
+    @State private var graceCountdown: Int = 1200  // 20-minute grace period for check-in
     @State private var autoContinueTimer: Timer?
     @State private var showCelebration = false
     @AppStorage("disableAutoContinue") private var disableAutoContinue = false
@@ -93,7 +94,7 @@ struct TimerCompleteDialog: View {
 
             // Auto-continue countdown or check-in message
             if suppressAutoContinue {
-                Text("It's been a while \u{2014} still working?")
+                Text("Still working? Stopping in \(graceTimeText)...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
@@ -119,7 +120,9 @@ struct TimerCompleteDialog: View {
         .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
         .padding(.horizontal, 24)
         .onAppear {
-            if !disableAutoContinue && !suppressAutoContinue {
+            if suppressAutoContinue {
+                startGracePeriodCountdown()
+            } else if !disableAutoContinue {
                 startCountdown()
             }
             AudioManager.shared.playCompletionBell()
@@ -157,7 +160,7 @@ struct TimerCompleteDialog: View {
 
             // Auto-continue countdown or check-in message
             if suppressAutoContinue {
-                Text("It's been a while \u{2014} still there?")
+                Text("Still there? Stopping in \(graceTimeText)...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
@@ -187,7 +190,9 @@ struct TimerCompleteDialog: View {
             if justCompletedSet {
                 showCelebration = true
             }
-            if !disableAutoContinue && !suppressAutoContinue {
+            if suppressAutoContinue {
+                startGracePeriodCountdown()
+            } else if !disableAutoContinue {
                 startCountdown()
             }
             AudioManager.shared.playCompletionBell()
@@ -304,6 +309,33 @@ struct TimerCompleteDialog: View {
                     .foregroundStyle(.secondary)
                 }
                 .padding(.top, 4)
+            }
+        }
+    }
+
+    private var graceTimeText: String {
+        let minutes = graceCountdown / 60
+        let seconds = graceCountdown % 60
+        if minutes > 0 {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+        return "\(seconds)s"
+    }
+
+    private func startGracePeriodCountdown() {
+        let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
+        graceCountdown = max(0, 1200 - elapsed)
+        if graceCountdown <= 0 {
+            onStop()
+            return
+        }
+        autoContinueTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
+            let remaining = max(0, 1200 - elapsed)
+            graceCountdown = remaining
+            if remaining <= 0 {
+                stopCountdown()
+                onStop()
             }
         }
     }

@@ -11,6 +11,8 @@ final class FocusSoundManager: ObservableObject {
     @Published var volume: Float = 0.5
 
     private var audioPlayer: AVAudioPlayer?
+    private var audioPlayer2: AVAudioPlayer?  // For crossfade looping
+    private var crossfadeTimer: Timer?
     private var audioEngine: AVAudioEngine?
     private var noiseNode: AVAudioSourceNode?
 
@@ -65,24 +67,100 @@ final class FocusSoundManager: ObservableObject {
 
     private func playBundledSound() {
         // Try to load bundled sound file
-        if let soundURL = Bundle.main.url(forResource: currentSound, withExtension: "mp3") {
-            do {
-                audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
-                audioPlayer?.numberOfLoops = -1 // Loop indefinitely
-                audioPlayer?.volume = volume
-                audioPlayer?.play()
-                isPlaying = true
-                print("▶️ Playing bundled sound: \(currentSound)")
-            } catch {
-                print("❌ Could not play sound: \(error)")
-                isPlaying = false
-            }
-        } else {
+        guard let soundURL = Bundle.main.url(forResource: currentSound, withExtension: "mp3") else {
             print("⚠️ Sound file not found: \(currentSound).mp3")
+            isPlaying = false
+            return
+        }
+
+        do {
+            // Set up primary player
+            audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
+            audioPlayer?.numberOfLoops = 0  // No built-in loop, we handle it
+            audioPlayer?.volume = volume
+            audioPlayer?.prepareToPlay()
+
+            // Set up secondary player for crossfade
+            audioPlayer2 = try AVAudioPlayer(contentsOf: soundURL)
+            audioPlayer2?.numberOfLoops = 0
+            audioPlayer2?.volume = 0  // Start silent
+            audioPlayer2?.prepareToPlay()
+
+            audioPlayer?.play()
+            isPlaying = true
+            print("▶️ Playing bundled sound with crossfade: \(currentSound)")
+
+            // Start crossfade monitoring
+            startCrossfadeMonitoring()
+        } catch {
+            print("❌ Could not play sound: \(error)")
             isPlaying = false
         }
 
         AudioManager.shared.triggerHapticFeedback(.light)
+    }
+
+    private func startCrossfadeMonitoring() {
+        crossfadeTimer?.invalidate()
+
+        // Check every 0.1 seconds if we need to start crossfade
+        crossfadeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor [weak self] in
+                self?.checkAndCrossfade()
+            }
+        }
+    }
+
+    private func checkAndCrossfade() {
+        guard let player = audioPlayer, player.isPlaying else { return }
+
+        let crossfadeDuration: TimeInterval = 2.0
+        let timeRemaining = player.duration - player.currentTime
+
+        // Start crossfade when 2 seconds remain
+        if timeRemaining <= crossfadeDuration && timeRemaining > 0 {
+            performCrossfade(duration: timeRemaining)
+        }
+    }
+
+    private func performCrossfade(duration: TimeInterval) {
+        guard let player1 = audioPlayer, let player2 = audioPlayer2 else { return }
+
+        // Only crossfade if player2 isn't already playing
+        guard !player2.isPlaying else { return }
+
+        // Start player2 and fade it in
+        player2.currentTime = 0
+        player2.volume = 0
+        player2.play()
+
+        // Animate the crossfade
+        let steps = 20
+        let stepDuration = duration / Double(steps)
+
+        for i in 0...steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + stepDuration * Double(i)) { [weak self] in
+                guard let self = self else { return }
+                let progress = Float(i) / Float(steps)
+                player1.volume = self.volume * (1 - progress)
+                player2.volume = self.volume * progress
+            }
+        }
+
+        // After crossfade, swap players
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1) { [weak self] in
+            guard let self = self else { return }
+            player1.stop()
+            player1.currentTime = 0
+            player1.volume = 0
+            player1.prepareToPlay()
+
+            // Swap
+            let temp = self.audioPlayer
+            self.audioPlayer = self.audioPlayer2
+            self.audioPlayer2 = temp
+        }
     }
 
     private func playGeneratedNoise(type: String) {
@@ -238,9 +316,15 @@ final class FocusSoundManager: ObservableObject {
     }
 
     func stop() {
-        // Stop audio player
+        // Stop crossfade timer
+        crossfadeTimer?.invalidate()
+        crossfadeTimer = nil
+
+        // Stop audio players
         audioPlayer?.stop()
         audioPlayer = nil
+        audioPlayer2?.stop()
+        audioPlayer2 = nil
 
         // Stop audio engine
         audioEngine?.stop()
@@ -263,7 +347,14 @@ final class FocusSoundManager: ObservableObject {
 
     func setVolume(_ newVolume: Float) {
         volume = newVolume
-        audioPlayer?.volume = newVolume
+        // Set volume on whichever player is currently the "main" one
+        // During crossfade, both have proportional volumes, so just update the target
+        if let player = audioPlayer, player.isPlaying, audioPlayer2?.isPlaying != true {
+            player.volume = newVolume
+        }
+        if let player2 = audioPlayer2, player2.isPlaying, audioPlayer?.isPlaying != true {
+            player2.volume = newVolume
+        }
         // For generated noise, volume is applied in the render callback
     }
 

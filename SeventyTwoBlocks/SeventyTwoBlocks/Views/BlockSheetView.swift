@@ -372,6 +372,24 @@ struct BlockSheetView: View {
                                     .foregroundStyle(.white)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
+
+                                Button(action: {
+                                    startTimerAsBreak()
+                                }) {
+                                    HStack {
+                                        Image(systemName: "cup.and.saucer.fill")
+                                        Text("Start as Break")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color.red.opacity(0.15))
+                                    .foregroundStyle(.red)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .strokeBorder(Color.red.opacity(0.3), lineWidth: 1)
+                                    )
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -906,6 +924,34 @@ struct BlockSheetView: View {
             return "\(minutes)m \(secs)s"
         }
         return "\(secs)s"
+    }
+
+    private func startTimerAsBreak() {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+
+        Task {
+            await saveBlock()
+            await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
+        }
+
+        timerManager.startTimer(
+            for: block.blockIndex,
+            date: dateString,
+            isBreakMode: true,
+            category: category,
+            label: normalizeLabel(label),
+            existingSegments: block.segments
+        )
+
+        NotificationManager.shared.scheduleTimerComplete(
+            at: Date().addingTimeInterval(300),
+            blockIndex: block.blockIndex,
+            isBreak: true
+        )
+
+        dismiss()
     }
 
     private func startTimer() {

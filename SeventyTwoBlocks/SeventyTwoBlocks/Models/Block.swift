@@ -20,6 +20,12 @@ struct BlockSegment: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case type, seconds, category, label, startElapsed
     }
+
+    /// Composite id for SwiftUI ForEach that's deterministic based on content
+    /// This ensures SwiftUI properly detects changes when segment seconds update
+    var compositeId: String {
+        "\(type.rawValue)-\(startElapsed ?? 0)-\(seconds)-\(category ?? "none")-\(label ?? "none")"
+    }
 }
 
 // MARK: - Run

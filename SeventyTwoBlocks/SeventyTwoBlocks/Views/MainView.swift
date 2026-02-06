@@ -63,6 +63,20 @@ struct MainView: View {
 
     var body: some View {
         ZStack {
+            // Loading overlay while blocks are loading
+            if blockManager.blocks.isEmpty {
+                VStack {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Text("Loading blocks...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemBackground))
+            }
+
             // Main content - VStack with sticky header
             VStack(spacing: 0) {
                 // STICKY HEADER SECTION
@@ -108,12 +122,11 @@ struct MainView: View {
                 }
                 .background(Color(.systemBackground))
 
-                // STICKY BOTTOM SECTION - Timer (when active) + Bottom Bar
+                // STICKY BOTTOM SECTION - Timer (when active or paused) + Bottom Bar
                 // Connected together with no gap
                 VStack(spacing: 0) {
-                    if timerManager.isActive {
-                        FloatingTimerBar()
-                    }
+                    // FloatingTimerBar handles its own visibility via shouldShow
+                    FloatingTimerBar()
                     StickyBottomBar(showOverview: $showOverview)
                 }
             }
@@ -229,11 +242,44 @@ struct MainView: View {
                 )
                 .transition(.scale.combined(with: .opacity))
             }
+
+            if timerManager.showPausedExpiry {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture { }
+
+                PausedExpiryDialog(
+                    blockIndex: timerManager.currentBlockIndex ?? 0,
+                    onContinueWork: {
+                        // Save partial data first, then continue (preserves category/label)
+                        timerManager.savePartialBlockData()
+                        handleContinueWork()  // This calls continueToNextBlock which dismisses the dialog
+                    },
+                    onTakeBreak: {
+                        // Save partial data first, then take break
+                        timerManager.savePartialBlockData()
+                        handleTakeBreak()  // This calls continueToNextBlock which dismisses the dialog
+                    },
+                    onStartNewBlock: {
+                        // Full dismiss with reset, then open block sheet
+                        timerManager.dismissPausedExpiry()
+                        selectedBlockIndex = currentBlockIndex
+                    },
+                    onStop: {
+                        // Full dismiss with reset
+                        timerManager.dismissPausedExpiry()
+                        NotificationManager.shared.cancelAllNotifications()
+                        WidgetDataProvider.shared.endLiveActivity()
+                    }
+                )
+                .transition(.scale.combined(with: .opacity))
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: timerManager.showTimerComplete)
         .animation(.easeInOut(duration: 0.2), value: timerManager.showBreakComplete)
         .animation(.easeInOut(duration: 0.2), value: showPlannedBlockDialog)
         .animation(.easeInOut(duration: 0.2), value: showDayEndDialog)
+        .animation(.easeInOut(duration: 0.2), value: timerManager.showPausedExpiry)
         // Dialog priority: Timer/Break complete dialogs take precedence over planned dialog
         .onChange(of: timerManager.showTimerComplete) { _, newValue in
             if newValue && showPlannedBlockDialog {
@@ -289,16 +335,32 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // 0. Auto-switch to today if the day has changed, but only when user isn't actively working
+            // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
+            timerManager.restoreFromBackground()
+
+            // 1b. If timer was PAUSED and block time has elapsed, stop it cleanly
+            // This treats it as an abandonment - user didn't work during pause
+            if timerManager.isPaused,
+               let blockIndex = timerManager.currentBlockIndex,
+               Block.blockEndDate(for: blockIndex) <= Date() {
+                // Block time elapsed while paused - stop without completing
+                timerManager.resumeTimer()  // This will detect elapsed time and call stopTimer
+            }
+
+            // 2. If check-in grace period (20 min) expired while backgrounded, auto-stop
+            if shouldSuppressAutoContinue && timerManager.showTimerComplete,
+               let completedAt = timerManager.timerCompletedAt,
+               Date().timeIntervalSince(completedAt) > 1200 {
+                handleStop()
+            }
+
+            // 3. Auto-switch to today if the day has changed, but only when user isn't actively working
             //    and hasn't chosen to continue past day end
             if !isToday && !timerManager.isActive && !timerManager.showTimerComplete && !timerManager.showBreakComplete && !continuedPastDayEnd {
                 selectedDate = logicalToday
             }
 
-            // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
-            timerManager.restoreFromBackground()
-
-            // 2. Update widget data on foreground
+            // 4. Update widget data on foreground
             WidgetDataProvider.shared.updateWidgetData(
                 blocks: blockManager.blocks,
                 categories: blockManager.categories,
@@ -306,10 +368,10 @@ struct MainView: View {
                 goalManager: goalManager
             )
 
-            // 3. Clear badge
+            // 5. Clear badge
             NotificationManager.shared.clearBadge()
 
-            // 3. If user tapped a notification action, execute it now
+            // 6. If user tapped a notification action, execute it now
             //    (this dismisses any dialog that restoreFromBackground showed)
             if let action = NotificationManager.shared.pendingAction {
                 NotificationManager.shared.pendingAction = nil
@@ -329,24 +391,48 @@ struct MainView: View {
                 default: break
                 }
             } else {
-                // 3b. No notification action — user just opened the app.
+                // 6b. No notification action — user just opened the app.
                 //     If they've been away a while (> 30s), show a FRESH dialog
                 //     so they can consciously choose what to do.
                 //     Don't auto-fill blocks — they might not have been working.
                 if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
-                    if Date().timeIntervalSince(completedAt) > 30 {
+                    let elapsed = Date().timeIntervalSince(completedAt)
+                    if shouldSuppressAutoContinue {
+                        // Check-in mode — don't reset timerCompletedAt.
+                        // The dialog's 20-min grace period countdown uses the original
+                        // completion time and will handle auto-stop if it expires.
+                        // But update Live Activity to show grace period instead of stale auto-continue
+                        let graceEndAt = completedAt.addingTimeInterval(1200)
+                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                            autoContinueEndAt: graceEndAt,
+                            isBreak: false
+                        )
+                    } else if elapsed > 30 {
                         // Reset to now so the dialog shows a fresh 25s countdown
                         timerManager.timerCompletedAt = Date()
+                        // Update Live Activity with fresh auto-continue countdown
+                        let newAutoContinueEndAt = Date().addingTimeInterval(25)
+                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                            autoContinueEndAt: newAutoContinueEndAt,
+                            isBreak: false
+                        )
                     }
                     // If <= 30s, the dialog's existing countdown handles it naturally
                 } else if timerManager.showBreakComplete, let completedAt = timerManager.timerCompletedAt {
-                    if Date().timeIntervalSince(completedAt) > 35 {
+                    let elapsed = Date().timeIntervalSince(completedAt)
+                    if elapsed > 35 {
                         timerManager.timerCompletedAt = Date()
+                        // Update Live Activity with fresh auto-continue countdown
+                        let newAutoContinueEndAt = Date().addingTimeInterval(30)
+                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                            autoContinueEndAt: newAutoContinueEndAt,
+                            isBreak: true
+                        )
                     }
                 }
             }
 
-            // 4. Reload blocks, goals, and auto-skip
+            // 7. Reload blocks, goals, and auto-skip
             if isToday {
                 Task {
                     await blockManager.reloadBlocks()
@@ -383,15 +469,18 @@ struct MainView: View {
         timerManager.onTimerComplete = { blockIndex, date, isBreak, secondsUsed, initialTime, segments in
             // Track this block as having timer usage
             self.blocksWithTimerUsage.insert(blockIndex)
-            // IMMEDIATELY mark the block .done in local state (synchronous, no race condition)
-            // This ensures the grid shows it as completed before the async DB save finishes
-            // Marks done regardless of break/work — block time was fully used at boundary
+
+            // IMMEDIATELY update local state (synchronous, no race condition)
+            // This ensures the grid shows correct state before the async DB save finishes
+            // Status = .done means "block was worked on" (shows time breakdown UI)
+            // Fill is determined by segments, not status (so partial fills display correctly)
+            let actualProgress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
             if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
                 self.blockManager.blocks[idx].status = .done
                 self.blockManager.blocks[idx].segments = segments
                 self.blockManager.blocks[idx].usedSeconds = secondsUsed
-                self.blockManager.blocks[idx].progress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
-                print("✅ Immediately marked block \(blockIndex) as .done in local state")
+                self.blockManager.blocks[idx].progress = actualProgress
+                print("✅ Marked block \(blockIndex) as .done, progress: \(Int(actualProgress))%")
             }
             Task {
                 await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments)
@@ -458,26 +547,20 @@ struct MainView: View {
         let blockDurationSeconds = 20 * 60  // 1200 seconds
         let actualProgress = min(100.0, Double(secondsUsed) / Double(blockDurationSeconds) * 100.0)
 
-        // Determine if this was a natural completion (timer reached block boundary)
-        // Natural completion: secondsUsed ~= initialTime (within 5 second tolerance for timing jitter)
-        let isNaturalCompletion = secondsUsed >= initialTime - 5
-
         var updatedBlock = block
         updatedBlock.usedSeconds = secondsUsed
         updatedBlock.progress = actualProgress
 
-        // Mark as done if:
-        // 1. Natural completion (timer reached block boundary), OR
-        // 2. Completed >= 95% of a full 20-minute block
-        // This ensures blocks started late but completed to boundary are marked done
-        updatedBlock.status = (isNaturalCompletion || actualProgress >= 95) ? .done : block.status
+        // Always mark as done - user worked on this block, so it's "complete"
+        // The fill is determined by segments (can be partial), not by status
+        updatedBlock.status = .done
         updatedBlock.category = timerManager.currentCategory ?? block.category
         updatedBlock.label = timerManager.currentLabel ?? block.label
 
         // Use the segments passed from the callback (captured before clearing)
         updatedBlock.segments = segments
 
-        print("💾 saveTimerCompletion: block \(blockIndex), used \(secondsUsed)s, initialTime \(initialTime)s, progress \(Int(actualProgress))%, natural: \(isNaturalCompletion), segments: \(segments.count)")
+        print("💾 saveTimerCompletion: block \(blockIndex), used \(secondsUsed)s, progress \(Int(actualProgress))%, segments: \(segments.count)")
 
         await blockManager.saveBlock(updatedBlock)
         await blockManager.reloadBlocks()

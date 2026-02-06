@@ -6,6 +6,13 @@ final class AudioManager {
 
     private var audioPlayer: AVAudioPlayer?
 
+    // Pre-created haptic generators for instant response
+    private let lightImpactGenerator = UIImpactFeedbackGenerator(style: .light)
+    private let mediumImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
+    private let heavyImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let notificationGenerator = UINotificationFeedbackGenerator()
+    private let selectionGenerator = UISelectionFeedbackGenerator()
+
     private init() {
         // Configure audio session for playback
         do {
@@ -14,6 +21,13 @@ final class AudioManager {
         } catch {
             print("Failed to set up audio session: \(error)")
         }
+
+        // Prepare haptic generators for instant response
+        lightImpactGenerator.prepare()
+        mediumImpactGenerator.prepare()
+        heavyImpactGenerator.prepare()
+        notificationGenerator.prepare()
+        selectionGenerator.prepare()
     }
 
     // MARK: - Completion Bell
@@ -45,26 +59,26 @@ final class AudioManager {
     func triggerHapticFeedback(_ type: HapticType) {
         switch type {
         case .success:
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.success)
+            notificationGenerator.notificationOccurred(.success)
+            notificationGenerator.prepare()  // Re-prepare for next use
         case .warning:
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.warning)
+            notificationGenerator.notificationOccurred(.warning)
+            notificationGenerator.prepare()
         case .error:
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.error)
+            notificationGenerator.notificationOccurred(.error)
+            notificationGenerator.prepare()
         case .light:
-            let generator = UIImpactFeedbackGenerator(style: .light)
-            generator.impactOccurred()
+            lightImpactGenerator.impactOccurred()
+            lightImpactGenerator.prepare()
         case .medium:
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
+            mediumImpactGenerator.impactOccurred()
+            mediumImpactGenerator.prepare()
         case .heavy:
-            let generator = UIImpactFeedbackGenerator(style: .heavy)
-            generator.impactOccurred()
+            heavyImpactGenerator.impactOccurred()
+            heavyImpactGenerator.prepare()
         case .selection:
-            let generator = UISelectionFeedbackGenerator()
-            generator.selectionChanged()
+            selectionGenerator.selectionChanged()
+            selectionGenerator.prepare()
         }
     }
 

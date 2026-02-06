@@ -7,6 +7,7 @@ private let MIN_SEGMENT_SECONDS = 10
 final class TimerManager: ObservableObject {
     // MARK: - Published State
     @Published var isActive = false
+    @Published var isPaused = false  // Explicit paused state for UI
     @Published var isBreak = false
     @Published var timeLeft: Int = 1200  // 20 minutes in seconds
     @Published var initialTime: Int = 1200
@@ -26,6 +27,7 @@ final class TimerManager: ObservableObject {
     // Completion state
     @Published var showTimerComplete = false
     @Published var showBreakComplete = false
+    @Published var showPausedExpiry = false  // Block time ended while paused
     @Published var timerCompletedAt: Date?
 
     // Check-in tracking: counts consecutive auto-continues without user interaction
@@ -37,6 +39,7 @@ final class TimerManager: ObservableObject {
     private var activeRunId: String?
     private var timer: Timer?
     private var autosaveTimer: Timer?
+    private var secondsUsedAtPause: Int = 0  // Preserves fill position when paused
 
     // Segments tracking (exposed for UI rendering)
     // previousSegments: segments from previous timer sessions on this block (already saved)
@@ -206,9 +209,15 @@ final class TimerManager: ObservableObject {
             // Starting in work mode - this is the work context to preserve
             lastWorkCategory = category
             lastWorkLabel = label
+        } else if lastWorkCategory == nil {
+            // Starting directly in break mode with no prior work context —
+            // seed from the passed category/label so "Back to Work" has
+            // something to restore
+            lastWorkCategory = category
+            lastWorkLabel = label
         }
-        // When starting in break mode, we keep existing lastWork* values
-        // so we can restore them when going back to work
+        // When starting in break mode with existing lastWork* values,
+        // we keep them so we can restore them when going back to work
 
         // Epoch-based timing for crash tolerance
         startedAt = Date()
@@ -248,10 +257,13 @@ final class TimerManager: ObservableObject {
     }
 
     func stopTimer(markComplete: Bool = false) {
-        guard isActive else { return }
+        // Allow stopping when active OR paused
+        guard isActive || isPaused else { return }
 
-        // Finalize current segment
-        finalizeCurrentSegment()
+        // Finalize current segment (only if was active, not if paused)
+        if isActive {
+            finalizeCurrentSegment()
+        }
 
         // CRITICAL: Capture all data BEFORE clearing state
         let blockIndex = currentBlockIndex
@@ -292,21 +304,70 @@ final class TimerManager: ObservableObject {
             timeLeft = max(0, Int(endAt.timeIntervalSinceNow))
         }
 
+        // Finalize current segment so it's saved in liveSegments
+        finalizeCurrentSegment()
+
+        // Store seconds used so fill doesn't jump on resume
+        secondsUsedAtPause = secondsUsed
+
         isActive = false
-        print("⏱️ Timer paused at \(timeLeft)s remaining")
+        isPaused = true
+        print("⏱️ Timer paused at \(timeLeft)s remaining, secondsUsed=\(secondsUsedAtPause), isPaused=\(isPaused)")
     }
 
     func resumeTimer() {
-        guard !isActive, let _ = currentBlockIndex else { return }
+        guard isPaused, let blockIndex = currentBlockIndex else { return }
 
-        // Recalculate end time
-        endAt = Date().addingTimeInterval(TimeInterval(timeLeft))
+        // Check if block time has already elapsed while paused
+        let blockEnd = Block.blockEndDate(for: blockIndex)
+        if blockEnd <= Date() {
+            // Block time has passed while paused - show special dialog
+            // User didn't work during the pause, so don't give credit for that time
+            print("⏱️ Block time elapsed while paused - showing paused expiry dialog")
+
+            // Keep the timer in a stopped state but show the paused expiry dialog
+            isPaused = false
+            showPausedExpiry = true
+            timerCompletedAt = Date()  // For dialog timestamp
+            return
+        }
+
+        // Calculate real time left based on block boundary
+        let realTimeLeft = max(0, Int(blockEnd.timeIntervalSinceNow))
+        let preciseInterval = blockEnd.timeIntervalSinceNow
+        timeLeft = realTimeLeft
+        endAt = blockEnd
+
+        // Adjust initialTime so secondsUsed stays where it was at pause
+        // secondsUsed = initialTime - timeLeft
+        // We want secondsUsed = secondsUsedAtPause
+        // So: initialTime = secondsUsedAtPause + timeLeft
+        initialTime = secondsUsedAtPause + timeLeft
+
+        // Recalculate visual proportions and scale factor
+        // Previous segments (from earlier sessions) + live segments (finalized at pause)
+        let allPreviousSeconds = (previousSegments + liveSegments).reduce(0) { $0 + $1.seconds }
+        previousVisualProportion = Double(allPreviousSeconds) / 1200.0
+        let remainingVisualProportion = max(0, 1.0 - previousVisualProportion)
+
+        // New scale factor: remaining visual space / remaining real time
+        // This ensures the fill reaches 100% exactly when timer ends
+        sessionScaleFactor = preciseInterval > 0 ? remainingVisualProportion / preciseInterval : 1.0 / 1200.0
+
+        // Move current liveSegments to previousSegments since we finalized them at pause
+        previousSegments = previousSegments + liveSegments
+        liveSegments = []
+
+        // Start a fresh segment from current position
+        currentSegmentStartElapsed = secondsUsed
+
         isActive = true
+        isPaused = false
 
         startTickTimer()
         startAutosaveTimer()
 
-        print("⏱️ Timer resumed with \(timeLeft)s remaining")
+        print("⏱️ Timer resumed: timeLeft=\(timeLeft)s, initialTime=\(initialTime), secondsUsed=\(secondsUsed), scaleFactor=\(sessionScaleFactor), previousProportion=\(previousVisualProportion)")
     }
 
     // MARK: - Work/Break Switching
@@ -329,7 +390,10 @@ final class TimerManager: ObservableObject {
         breakStartTime = Date()
         breakNotifyAt = Date().addingTimeInterval(300)  // 5-min popup trigger
 
-        onWidgetUpdate?()
+        // Update widget async to avoid blocking UI
+        Task { @MainActor in
+            onWidgetUpdate?()
+        }
         print("⏱️ Switched to break mode, preserved work context: \(lastWorkCategory ?? "nil") / \(lastWorkLabel ?? "nil")")
     }
 
@@ -352,7 +416,10 @@ final class TimerManager: ObservableObject {
         breakStartTime = nil
         breakNotifyAt = nil  // Cancel any pending break notification
 
-        onWidgetUpdate?()
+        // Update widget async to avoid blocking UI
+        Task { @MainActor in
+            onWidgetUpdate?()
+        }
         print("⏱️ Switched to work mode, restored work context: \(currentCategory ?? "nil") / \(currentLabel ?? "nil")")
     }
 
@@ -438,9 +505,11 @@ final class TimerManager: ObservableObject {
         autosaveTimer = nil
 
         isActive = false
+        isPaused = false
         timeLeft = 0
         progress = 0
         breakProgress = 0
+        secondsUsedAtPause = 0
         currentBlockIndex = nil
         currentDate = nil
         startedAt = nil
@@ -690,6 +759,23 @@ final class TimerManager: ObservableObject {
         resetState()
     }
 
+    /// Save partial block data without resetting state - used when continuing to next block
+    func savePartialBlockData() {
+        if let blockIndex = currentBlockIndex, let date = currentDate {
+            let finalSegments = previousSegments + liveSegments
+            // Don't mark complete - just save the partial progress
+            onTimerComplete?(blockIndex, date, isBreak, secondsUsedAtPause, initialTime, finalSegments)
+        }
+    }
+
+    /// Dismiss paused expiry dialog and fully reset - used when stopping
+    func dismissPausedExpiry() {
+        showPausedExpiry = false
+        timerCompletedAt = nil
+        savePartialBlockData()
+        resetState()
+    }
+
     private func resetState() {
         currentBlockIndex = nil
         currentDate = nil
@@ -707,6 +793,7 @@ final class TimerManager: ObservableObject {
         breakNotifyAt = nil
         lastReportedProgressQuarter = -1
         blocksSinceLastInteraction = 0
+        isPaused = false
     }
 
     // MARK: - Continue Actions
@@ -714,6 +801,7 @@ final class TimerManager: ObservableObject {
     func continueToNextBlock(nextBlockIndex: Int, date: String, isBreakMode: Bool = false, category: String? = nil, label: String? = nil, existingSegments: [BlockSegment] = []) {
         showTimerComplete = false
         showBreakComplete = false
+        showPausedExpiry = false
         // Duration is calculated automatically based on block boundaries for work mode
         // Pass existing segments so we continue from where the block left off (if any)
         startTimer(for: nextBlockIndex, date: date, isBreakMode: isBreakMode, category: category, label: label, existingSegments: existingSegments)
