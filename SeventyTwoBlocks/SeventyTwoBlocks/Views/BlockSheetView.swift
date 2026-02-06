@@ -988,7 +988,8 @@ struct BlockSheetView: View {
             isBreakMode: true,
             category: category,
             label: normalizeLabel(label),
-            existingSegments: block.segments
+            existingSegments: block.segments,
+            existingVisualFill: block.visualFill
         )
 
         NotificationManager.shared.scheduleTimerComplete(
@@ -1013,14 +1014,15 @@ struct BlockSheetView: View {
         }
 
         // Duration calculated automatically based on block boundary
-        // Pass existing segments so timer continues from where it left off
+        // Pass existing segments and visual fill so timer continues from where it left off
         timerManager.startTimer(
             for: block.blockIndex,
             date: dateString,
             isBreakMode: false,
             category: category,
             label: normalizeLabel(label),
-            existingSegments: block.segments
+            existingSegments: block.segments,
+            existingVisualFill: block.visualFill
         )
 
         // Schedule notification at actual block end time
@@ -1092,14 +1094,15 @@ struct BlockSheetView: View {
             let isBreakMode = category == "break"
 
             // Duration calculated automatically based on block boundary
-            // Pass existing segments so timer continues from where it left off
+            // Pass existing segments and visual fill so timer continues from where it left off
             timerManager.startTimer(
                 for: block.blockIndex,
                 date: dateString,
                 isBreakMode: isBreakMode,
                 category: category,
                 label: normalizeLabel(label),
-                existingSegments: isBreakMode ? [] : block.segments  // Only preserve work segments for work mode
+                existingSegments: isBreakMode ? [] : block.segments,  // Only preserve work segments for work mode
+                existingVisualFill: isBreakMode ? nil : block.visualFill
             )
 
             // Schedule notification at actual block end time (or fixed duration for breaks)

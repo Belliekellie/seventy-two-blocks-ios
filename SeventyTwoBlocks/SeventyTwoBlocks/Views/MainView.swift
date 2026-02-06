@@ -1008,14 +1008,15 @@ struct MainView: View {
         }
 
         // Duration calculated automatically based on block boundary
-        // Pass existing segments so timer continues from where it left off
+        // Pass existing segments and visual fill so timer continues from where it left off
         timerManager.startTimer(
             for: block.blockIndex,
             date: todayString,
             isBreakMode: false,
             category: block.category,
             label: block.label,
-            existingSegments: block.segments
+            existingSegments: block.segments,
+            existingVisualFill: block.visualFill
         )
 
         // Start Live Activity
@@ -1047,7 +1048,8 @@ struct MainView: View {
             isBreakMode: true,
             category: nil,
             label: "Break",
-            existingSegments: block.segments
+            existingSegments: block.segments,
+            existingVisualFill: block.visualFill
         )
 
         // Start Live Activity — break timer runs to block boundary

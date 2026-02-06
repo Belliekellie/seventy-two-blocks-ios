@@ -39,6 +39,7 @@ final class TimerManager: ObservableObject {
     private var activeRunId: String?
     private var timer: Timer?
     private var autosaveTimer: Timer?
+    private var pausedExpiryTimer: Timer?  // Fires when block time ends while paused
     private var secondsUsedAtPause: Int = 0  // Preserves fill position when paused
 
     // Segments tracking (exposed for UI rendering)
@@ -162,7 +163,7 @@ final class TimerManager: ObservableObject {
 
     // MARK: - Timer Control
 
-    func startTimer(for blockIndex: Int, date: String, isBreakMode: Bool = false, category: String? = nil, label: String? = nil, existingSegments: [BlockSegment] = []) {
+    func startTimer(for blockIndex: Int, date: String, isBreakMode: Bool = false, category: String? = nil, label: String? = nil, existingSegments: [BlockSegment] = [], existingVisualFill: Double? = nil) {
         // GUARD: Never start a timer on a past or future block
         let currentTimeBlock = Block.getCurrentBlockIndex()
         if blockIndex < currentTimeBlock {
@@ -194,13 +195,18 @@ final class TimerManager: ObservableObject {
         // Round up so we don't show 0 seconds initially
         actualDuration = Int(ceil(preciseInterval))
 
-        // Calculate visual proportion already used by existing segments
-        // Each segment's visual proportion = seconds / 1200 (20 minutes)
-        let blockDuration = 1200.0  // Full block is 20 minutes
-        let existingVisualProportion = existingSegments.reduce(0.0) { sum, seg in
-            sum + Double(seg.seconds) / blockDuration
+        // Use saved visual fill if provided, otherwise calculate from segments
+        // This preserves the actual visual position from previous sessions
+        if let savedFill = existingVisualFill, savedFill > 0 {
+            previousVisualProportion = min(savedFill, 1.0)
+        } else {
+            // Fallback: calculate from segments using 1/1200 scale
+            let blockDuration = 1200.0
+            let existingVisualProportion = existingSegments.reduce(0.0) { sum, seg in
+                sum + Double(seg.seconds) / blockDuration
+            }
+            previousVisualProportion = min(existingVisualProportion, 1.0)
         }
-        previousVisualProportion = min(existingVisualProportion, 1.0)
 
         // Calculate remaining visual space
         let remainingVisualProportion = max(0, 1.0 - previousVisualProportion)
@@ -353,11 +359,29 @@ final class TimerManager: ObservableObject {
         isActive = false
         isPaused = true
 
+        // Schedule a timer to show paused expiry dialog when block time ends
+        if let blockIndex = currentBlockIndex {
+            let blockEnd = Block.blockEndDate(for: blockIndex)
+            let timeUntilBlockEnd = blockEnd.timeIntervalSinceNow
+            if timeUntilBlockEnd > 0 {
+                pausedExpiryTimer?.invalidate()
+                pausedExpiryTimer = Timer.scheduledTimer(withTimeInterval: timeUntilBlockEnd, repeats: false) { [weak self] _ in
+                    Task { @MainActor in
+                        self?.handlePausedExpiry()
+                    }
+                }
+            }
+        }
+
         print("⏱️ Timer paused at \(timeLeft)s remaining, secondsUsed=\(secondsUsedAtPause)")
     }
 
     func resumeTimer() {
         guard isPaused, let blockIndex = currentBlockIndex else { return }
+
+        // Cancel the paused expiry timer since we're resuming
+        pausedExpiryTimer?.invalidate()
+        pausedExpiryTimer = nil
 
         // Check if block time has already elapsed while paused
         let blockEnd = Block.blockEndDate(for: blockIndex)
@@ -547,6 +571,8 @@ final class TimerManager: ObservableObject {
         timer = nil
         autosaveTimer?.invalidate()
         autosaveTimer = nil
+        pausedExpiryTimer?.invalidate()
+        pausedExpiryTimer = nil
 
         isActive = false
         isPaused = false
@@ -819,6 +845,19 @@ final class TimerManager: ObservableObject {
             // Don't mark complete - just save the partial progress
             onTimerComplete?(blockIndex, date, isBreak, secondsUsedAtPause, initialTime, finalSegments, partialVisualFill)
         }
+    }
+
+    /// Called when block time ends while timer is paused
+    private func handlePausedExpiry() {
+        guard isPaused else { return }
+
+        print("⏱️ Block time ended while paused - showing paused expiry dialog")
+
+        pausedExpiryTimer?.invalidate()
+        pausedExpiryTimer = nil
+        isPaused = false
+        showPausedExpiry = true
+        timerCompletedAt = Date()
     }
 
     /// Dismiss paused expiry dialog and fully reset - used when stopping
