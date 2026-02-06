@@ -298,18 +298,19 @@ final class TimerManager: ObservableObject {
         // Capture visual fill BEFORE clearing state
         let capturedVisualFill = currentVisualFill
 
-        stopTimerInternal()
-
-        // ALWAYS save segments when stopping - they represent real work done
-        // The callback handler decides whether to mark the block as .done based on block time
+        // CRITICAL: Call the callback BEFORE clearing state
+        // This ensures the local blocks array is updated before SwiftUI re-renders
+        // due to @Published property changes from stopTimerInternal()
         if let blockIndex = blockIndex, let date = date, !finalSegments.isEmpty {
             onTimerComplete?(blockIndex, date, wasBreak, used, sessionInitialTime, finalSegments, capturedVisualFill)
         }
 
+        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count), visualFill: \(String(format: "%.1f%%", capturedVisualFill * 100))")
+
+        stopTimerInternal()
+
         // Notify widget of timer stop
         onWidgetUpdate?()
-
-        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count), visualFill: \(String(format: "%.1f%%", capturedVisualFill * 100))")
     }
 
     func pauseTimer() {

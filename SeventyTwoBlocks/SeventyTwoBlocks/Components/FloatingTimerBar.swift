@@ -158,11 +158,17 @@ struct FloatingTimerBar: View {
                             .frame(height: 6)
 
                         // Segment fills
-                        let previousScale = 1.0 / 1200.0
                         let liveStartOffset = timerManager.previousVisualProportion
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
 
                         // 1. Render previous segments (from earlier timer sessions)
+                        // Use a scale factor that makes them fill to exactly previousVisualProportion
+                        // This preserves visual position after pause/resume
+                        let totalPreviousSeconds = timerManager.previousSegments.reduce(0) { $0 + $1.seconds }
+                        let previousScale = totalPreviousSeconds > 0
+                            ? liveStartOffset / Double(totalPreviousSeconds)
+                            : 1.0 / 1200.0
+
                         ForEach(Array(timerManager.previousSegments.enumerated()), id: \.element.compositeId) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: timerManager.previousSegments, scaleFactor: previousScale)
                             let segmentWidth = Double(segment.seconds) * previousScale
