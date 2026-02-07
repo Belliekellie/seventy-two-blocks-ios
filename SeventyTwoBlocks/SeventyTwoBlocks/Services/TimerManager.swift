@@ -459,9 +459,12 @@ final class TimerManager: ObservableObject {
         breakStartTime = Date()
         breakNotifyAt = Date().addingTimeInterval(300)  // 5-min popup trigger
 
-        // Update widget async to avoid blocking UI
-        Task { @MainActor in
-            onWidgetUpdate?()
+        // Save snapshot immediately after mode switch (crash recovery)
+        saveSnapshot()
+
+        // Defer widget update to let SwiftUI settle first
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.onWidgetUpdate?()
         }
         print("⏱️ Switched to break mode, preserved work context: \(lastWorkCategory ?? "nil") / \(lastWorkLabel ?? "nil")")
     }
@@ -478,16 +481,21 @@ final class TimerManager: ObservableObject {
         currentCategory = lastWorkCategory
         currentLabel = lastWorkLabel
 
-        // Split segment
+        // Split segment - creates the break segment before switching type
         splitSegment(toType: .work)
 
         isBreak = false
         breakStartTime = nil
         breakNotifyAt = nil  // Cancel any pending break notification
 
-        // Update widget async to avoid blocking UI
-        Task { @MainActor in
-            onWidgetUpdate?()
+        // Save snapshot immediately after mode switch (crash recovery)
+        // This ensures the break segment is persisted before any UI updates
+        saveSnapshot()
+
+        // Defer widget update to let SwiftUI settle first
+        // This prevents UI freeze from too many rapid state changes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.onWidgetUpdate?()
         }
         print("⏱️ Switched to work mode, restored work context: \(currentCategory ?? "nil") / \(currentLabel ?? "nil")")
     }
@@ -696,6 +704,7 @@ final class TimerManager: ObservableObject {
 
         // For natural completion (timer hit 0), visual fill should be 1.0 (100%)
         // This is because the scale factor is calculated so fill reaches 100% at block boundary
+        // Even if you start with 1 minute left, completing that minute = 100% of YOUR work session
         let completionVisualFill = 1.0
 
         // Notify completion with captured segments
@@ -785,7 +794,7 @@ final class TimerManager: ObservableObject {
             currentSegmentStart: Double(currentSegmentStartElapsed),
             currentType: currentSegmentType,
             currentCategory: currentCategory,
-            lastWorkCategory: currentCategory
+            lastWorkCategory: lastWorkCategory  // Use actual lastWorkCategory, not currentCategory
         )
 
         onSaveSnapshot?(blockIndex, date, snapshot)

@@ -26,6 +26,36 @@ struct BlockSegment: Codable, Identifiable {
     var compositeId: String {
         "\(type.rawValue)-\(startElapsed ?? 0)-\(seconds)-\(category ?? "none")-\(label ?? "none")"
     }
+
+    /// Normalizes an array of segments by:
+    /// 1. Filtering out segments with zero or negative seconds
+    /// 2. Merging consecutive segments with the same type, category, and label
+    /// This prevents micro-segments from pause/resume cluttering the time breakdown
+    static func normalized(_ segments: [BlockSegment]) -> [BlockSegment] {
+        // Filter out zero/negative segments
+        let filtered = segments.filter { $0.seconds > 0 }
+        guard !filtered.isEmpty else { return [] }
+
+        var result: [BlockSegment] = []
+
+        for segment in filtered {
+            if let last = result.last,
+               last.type == segment.type,
+               last.category == segment.category,
+               last.label == segment.label {
+                // Merge with previous segment (same type/category/label)
+                var merged = last
+                merged.seconds += segment.seconds
+                // Keep the startElapsed of the first segment in the merged group
+                result[result.count - 1] = merged
+            } else {
+                // Different segment, add as new
+                result.append(segment)
+            }
+        }
+
+        return result
+    }
 }
 
 // MARK: - Run

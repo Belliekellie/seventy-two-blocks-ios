@@ -1166,14 +1166,16 @@ struct BlockSheetView: View {
 
     private func saveSegments(_ updatedSegments: [BlockSegment]) async {
         var updatedBlock = block
-        updatedBlock.segments = updatedSegments
+        // Normalize to merge consecutive same-type/category/label segments
+        let normalizedSegments = BlockSegment.normalized(updatedSegments)
+        updatedBlock.segments = normalizedSegments
 
-        // Recalculate usedSeconds from segments
-        updatedBlock.usedSeconds = updatedSegments.reduce(0) { $0 + $1.seconds }
+        // Recalculate usedSeconds from normalized segments
+        updatedBlock.usedSeconds = normalizedSegments.reduce(0) { $0 + $1.seconds }
 
         // Update the block's top-level category and label to match the dominant work segment
         // so the block grid fill color reflects the edited data
-        let workSegments = updatedSegments.filter { $0.type == .work && $0.seconds > 0 }
+        let workSegments = normalizedSegments.filter { $0.type == .work && $0.seconds > 0 }
         if let dominant = workSegments.max(by: { $0.seconds < $1.seconds }) {
             updatedBlock.category = dominant.category
             updatedBlock.label = dominant.label

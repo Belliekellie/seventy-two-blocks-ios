@@ -1057,7 +1057,11 @@ struct BlockItemView: View {
                     .padding(.bottom, 2)
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .aspectRatio(5.6, contentMode: .fit) // Half height blocks on Mac for more visibility
+        #else
         .aspectRatio(2.8, contentMode: .fit) // Wide rectangular blocks (3 per row = 1 hour)
+        #endif
         .opacity(opacity)
     }
 }

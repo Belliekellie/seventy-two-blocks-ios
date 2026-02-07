@@ -152,7 +152,13 @@ struct MainView: View {
                     },
                     onAutoContinue: {
                         timerManager.incrementInteractionCounter()
-                        handleContinueWork()
+                        // After N blocks without user interaction, stop instead of continuing
+                        // This prevents "zombie blocks" from filling when user is away
+                        if shouldSuppressAutoContinue {
+                            handleStop()
+                        } else {
+                            handleContinueWork()
+                        }
                     },
                     onTakeBreak: {
                         timerManager.resetInteractionCounter()
@@ -526,7 +532,7 @@ struct MainView: View {
                 } else {
                     print("💾 Saved block \(blockIndex) segments (block still active), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%")
                 }
-                self.blockManager.blocks[idx].segments = segments
+                self.blockManager.blocks[idx].segments = BlockSegment.normalized(segments)
                 self.blockManager.blocks[idx].usedSeconds = secondsUsed
                 self.blockManager.blocks[idx].progress = actualProgress
                 self.blockManager.blocks[idx].visualFill = visualFill
@@ -610,7 +616,8 @@ struct MainView: View {
         updatedBlock.label = timerManager.currentLabel ?? block.label
 
         // Use the segments passed from the callback (captured before clearing)
-        updatedBlock.segments = segments
+        // Normalize to merge consecutive same-type/category/label segments (prevents micro-segment clutter)
+        updatedBlock.segments = BlockSegment.normalized(segments)
 
         print("💾 saveTimerCompletion: block \(blockIndex), used \(secondsUsed)s, progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, segments: \(segments.count), done: \(blockTimeElapsed)")
 
@@ -650,7 +657,8 @@ struct MainView: View {
             updatedBlock.label = timerManager.currentLabel ?? block.label
         }
         // Also save the combined segments so they persist on refresh
-        updatedBlock.segments = allSegments
+        // Normalize to merge consecutive same-type/category/label segments (prevents micro-segment clutter)
+        updatedBlock.segments = BlockSegment.normalized(allSegments)
 
         await blockManager.saveBlock(updatedBlock)
         print("💾 Saved snapshot for block \(blockIndex) - usedSeconds: \(totalUsedSeconds), progress: \(Int(newProgress))%")
