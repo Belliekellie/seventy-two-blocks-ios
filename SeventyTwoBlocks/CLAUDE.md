@@ -29,7 +29,11 @@ This document describes how the 72 Blocks app works across iOS and Web versions,
 | `.done` | User worked on it (can be partial OR full - see below) |
 | `.skipped` | Explicitly skipped by user or auto-skip |
 
-**CRITICAL**: `.done` does NOT mean 100% filled. It means "user worked on this block". A block can be `.done` with 10%, 50%, or 100% fill. The fill is determined by segments, not status.
+**CRITICAL**:
+- `.done` does NOT mean 100% filled. It means "block time has elapsed and user worked on it".
+- A block can be `.done` with 10%, 50%, or 100% fill. The fill is determined by segments, not status.
+- A block is only marked `.done` when its **time window has elapsed** (we've passed the 20-minute block boundary).
+- If a user stops mid-block, the segments are saved but status remains unchanged - user might resume later in the same block.
 
 ## Status vs Fill (Critical Distinction)
 
@@ -37,9 +41,11 @@ These are **INDEPENDENT** concepts:
 
 | Concept | Determined By | Controls |
 |---------|--------------|----------|
-| **Status** (`.done`) | Whether user worked on block | Time breakdown UI, completed styling, "finished" state |
+| **Status** (`.done`) | Block time elapsed AND user worked on it | Time breakdown UI, completed styling, "finished" state |
 | **Fill** (color) | `segments` array | Visual fill percentage in grid |
 | **Progress** | `usedSeconds / 1200` | Percentage display |
+
+**Key rule**: A block is only marked `.done` when its time window has passed (block boundary reached). If a user stops mid-block, segments are saved but status stays as-is because they might resume later in that block.
 
 A block marked `.done` shows the time breakdown view, minutes worked, etc. But its fill can be partial (e.g., 50%) if the user only worked 10 minutes.
 
@@ -369,10 +375,11 @@ Every 12 completed work blocks triggers celebration screen.
 
 1. **Status ≠ Fill**: A `.done` block can have partial fill. Always use segments for fill.
 2. **Block boundary timing**: Timer runs to block end, not for fixed 20 minutes.
-3. **Scale factor locked**: Once a session starts, its scale factor is fixed.
-4. **Category during break**: Work category preserved but not written to break segments.
-5. **Auto-continue suppression**: Check-in mode after N blocks without interaction.
-6. **Segment normalization**: Filter zero/negative, merge consecutive same-type segments.
+3. **Done only when time elapsed**: Only mark `.done` when block time has passed. User might stop and resume.
+4. **Scale factor locked**: Once a session starts, its scale factor is fixed.
+5. **Category during break**: Work category preserved but not written to break segments.
+6. **Auto-continue suppression**: Check-in mode after N blocks without interaction.
+7. **Segment normalization**: Filter zero/negative, merge consecutive same-type segments.
 
 ## Data Consistency Rules
 

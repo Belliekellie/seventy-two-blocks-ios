@@ -105,20 +105,24 @@ struct TimerActivityAttributes: ActivityAttributes {
 // MARK: - Block Time Utilities (pure functions, no dependencies on Block model)
 
 enum BlockTimeUtils {
-    /// Convert block index (0-71) to display time string "HH:mm"
+    /// Convert block index (0-71) to display time string "h:mma" (e.g., "2:20pm")
     static func blockToTime(_ index: Int) -> String {
         let totalMinutes = index * WidgetConstants.blockDurationMinutes
-        let hours = totalMinutes / 60
+        let hours24 = totalMinutes / 60
         let minutes = totalMinutes % 60
-        return String(format: "%02d:%02d", hours, minutes)
+        let hours12 = hours24 == 0 ? 12 : (hours24 > 12 ? hours24 - 12 : hours24)
+        let ampm = hours24 < 12 ? "am" : "pm"
+        return String(format: "%d:%02d%@", hours12, minutes, ampm)
     }
 
-    /// Get end time for a block "HH:mm"
+    /// Get end time for a block "h:mma" (e.g., "2:40pm")
     static func blockEndTime(_ index: Int) -> String {
         let totalMinutes = (index + 1) * WidgetConstants.blockDurationMinutes
-        let hours = totalMinutes / 60
+        let hours24 = totalMinutes / 60
         let minutes = totalMinutes % 60
-        return String(format: "%02d:%02d", hours, minutes)
+        let hours12 = hours24 == 0 ? 12 : (hours24 > 12 ? hours24 - 12 : hours24)
+        let ampm = hours24 < 12 ? "am" : "pm"
+        return String(format: "%d:%02d%@", hours12, minutes, ampm)
     }
 
     /// Get current block index based on current time

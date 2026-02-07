@@ -1,0 +1,319 @@
+{
+  "" : {
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocks-primary.dia",
+    "emit-module-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocks-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocks-primary-emit-module.dia",
+    "pch" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocks-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocks-primary.swiftdeps"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/BlockGridView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockGridView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/BreakCompleteDialog.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BreakCompleteDialog~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/CompactHeaderView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/CompactHeaderView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/DateHeaderView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/DateHeaderView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/FloatingTimerBar.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FloatingTimerBar~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/OneThingView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OneThingView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/PlannedBlockDialog.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/PlannedBlockDialog~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/QuickActionsView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/QuickActionsView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/StatsCardView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsCardView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/StickyBottomBar.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StickyBottomBar~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Components/TimerCompleteDialog.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerCompleteDialog~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/ContentView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/ContentView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Models/Block.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Block~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Models/Category.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Category~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Models/Goal.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/Goal~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/AudioManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AudioManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/AuthManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/BlockManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/FocusSoundManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/FocusSoundManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/GoalManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GoalManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/NotificationManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/NotificationManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/SupabaseClient.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SupabaseClient~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Services/TimerManager.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/TimerManager~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/SeventyTwoBlocksApp.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SeventyTwoBlocksApp~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Views/AuthView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/AuthView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Views/BlockSheetView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/BlockSheetView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Views/MainView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/MainView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Views/OverviewSheetView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/OverviewSheetView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Views/SettingsView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/SettingsView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/SeventyTwoBlocks/Views/StatsExportView.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/StatsExportView~partial.swiftmodule"
+  },
+  "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/GeorgeKelly/seventy-two-blocks-ios/SeventyTwoBlocks/build/SeventyTwoBlocks.build/Debug-iphonesimulator/SeventyTwoBlocks.build/Objects-normal/x86_64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

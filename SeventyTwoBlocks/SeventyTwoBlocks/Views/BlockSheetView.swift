@@ -972,6 +972,20 @@ struct BlockSheetView: View {
         return "\(secs)s"
     }
 
+    private func startLiveActivity(blockIndex: Int, isBreak: Bool, category: String?, label: String?) {
+        let categoryColor = blockManager.categories.first { $0.id == category }?.color
+        WidgetDataProvider.shared.startLiveActivity(
+            blockIndex: blockIndex,
+            isBreak: isBreak,
+            timerEndAt: Block.blockEndDate(for: blockIndex),
+            timerStartedAt: Date(),
+            category: category,
+            categoryColor: categoryColor,
+            label: label,
+            progress: 0
+        )
+    }
+
     private func startTimerAsBreak() {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -991,6 +1005,9 @@ struct BlockSheetView: View {
             existingSegments: block.segments,
             existingVisualFill: block.visualFill
         )
+
+        // Start Live Activity for break
+        startLiveActivity(blockIndex: block.blockIndex, isBreak: true, category: nil, label: "Break")
 
         NotificationManager.shared.scheduleTimerComplete(
             at: Date().addingTimeInterval(300),
@@ -1024,6 +1041,9 @@ struct BlockSheetView: View {
             existingSegments: block.segments,
             existingVisualFill: block.visualFill
         )
+
+        // Start Live Activity
+        startLiveActivity(blockIndex: block.blockIndex, isBreak: false, category: category, label: normalizeLabel(label))
 
         // Schedule notification at actual block end time
         NotificationManager.shared.scheduleTimerComplete(
@@ -1103,6 +1123,14 @@ struct BlockSheetView: View {
                 label: normalizeLabel(label),
                 existingSegments: isBreakMode ? [] : block.segments,  // Only preserve work segments for work mode
                 existingVisualFill: isBreakMode ? nil : block.visualFill
+            )
+
+            // Start Live Activity
+            startLiveActivity(
+                blockIndex: block.blockIndex,
+                isBreak: isBreakMode,
+                category: isBreakMode ? nil : category,
+                label: isBreakMode ? "Break" : normalizeLabel(label)
             )
 
             // Schedule notification at actual block end time (or fixed duration for breaks)
