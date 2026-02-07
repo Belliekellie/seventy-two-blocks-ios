@@ -1,5 +1,4 @@
 import AVFoundation
-import AudioToolbox
 import Combine
 
 /// Manages ambient focus sounds that can play anytime (not tied to timer)
@@ -164,7 +163,6 @@ final class FocusSoundManager: ObservableObject {
         }
     }
 
-    #if !targetEnvironment(macCatalyst)
     private func playGeneratedNoise(type: String) {
         // Binaural beats require stereo for the beat effect
         if type == "binaural" {
@@ -184,7 +182,11 @@ final class FocusSoundManager: ObservableObject {
         var pinkState: [Float] = [0, 0, 0, 0, 0, 0, 0] // For pink noise
 
         noiseNode = AVAudioSourceNode { _, _, frameCount, audioBufferList -> OSStatus in
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+            // Access buffer directly without UnsafeMutableAudioBufferListPointer (works on Mac Catalyst)
+            let bufferList = audioBufferList.pointee
+            guard let buffer = bufferList.mBuffers.mData?.assumingMemoryBound(to: Float.self) else {
+                return noErr
+            }
 
             for frame in 0..<Int(frameCount) {
                 var sample: Float
@@ -218,10 +220,7 @@ final class FocusSoundManager: ObservableObject {
                 // Clamp
                 sample = max(-1, min(1, sample))
 
-                for buffer in ablPointer {
-                    let buf = buffer.mData?.assumingMemoryBound(to: Float.self)
-                    buf?[frame] = sample
-                }
+                buffer[frame] = sample
             }
 
             return noErr
@@ -269,11 +268,9 @@ final class FocusSoundManager: ObservableObject {
 
         // Stereo source node for binaural beats
         noiseNode = AVAudioSourceNode(format: AVAudioFormat(standardFormatWithSampleRate: Double(sampleRate), channels: 2)!) { _, _, frameCount, audioBufferList -> OSStatus in
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-
-            // For stereo interleaved format
-            guard let buffer = ablPointer.first,
-                  let data = buffer.mData?.assumingMemoryBound(to: Float.self) else {
+            // Access buffer directly without UnsafeMutableAudioBufferListPointer (works on Mac Catalyst)
+            let bufferList = audioBufferList.pointee
+            guard let data = bufferList.mBuffers.mData?.assumingMemoryBound(to: Float.self) else {
                 return noErr
             }
 
@@ -316,18 +313,6 @@ final class FocusSoundManager: ObservableObject {
 
         AudioManager.shared.triggerHapticFeedback(.light)
     }
-    #else
-    // Generated sounds not available on Mac Catalyst
-    private func playGeneratedNoise(type: String) {
-        print("⚠️ Generated sounds (\(type)) not available on Mac")
-        isPlaying = false
-    }
-
-    private func playBinauralBeats() {
-        print("⚠️ Binaural beats not available on Mac")
-        isPlaying = false
-    }
-    #endif
 
     func stop() {
         // Stop crossfade timer
