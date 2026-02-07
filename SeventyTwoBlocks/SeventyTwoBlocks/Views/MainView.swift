@@ -324,6 +324,13 @@ struct MainView: View {
                 timerManager.showPausedExpiry = false
             }
         }
+        // Prevent screen from sleeping while timer is active or paused
+        .onChange(of: timerManager.isActive) { _, isActive in
+            UIApplication.shared.isIdleTimerDisabled = isActive || timerManager.isPaused
+        }
+        .onChange(of: timerManager.isPaused) { _, isPaused in
+            UIApplication.shared.isIdleTimerDisabled = timerManager.isActive || isPaused
+        }
         .sheet(isPresented: Binding(
             get: { selectedBlockIndex != nil },
             set: { if !$0 { selectedBlockIndex = nil } }
@@ -360,6 +367,12 @@ struct MainView: View {
         .onAppear {
             // Initialize selectedDate to logical today (accounting for dayStartHour)
             selectedDate = logicalToday
+            // Set initial idle timer state (keep screen on if timer running/paused)
+            UIApplication.shared.isIdleTimerDisabled = timerManager.isActive || timerManager.isPaused
+        }
+        .onDisappear {
+            // Re-enable idle timer when view disappears (safety cleanup)
+            UIApplication.shared.isIdleTimerDisabled = false
         }
         .task {
             async let blocksLoad: Void = blockManager.loadBlocks(for: selectedDate)
