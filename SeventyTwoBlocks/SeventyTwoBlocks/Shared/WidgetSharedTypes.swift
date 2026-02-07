@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 
 // MARK: - App Group Constants
 
@@ -80,6 +82,7 @@ struct WidgetBlockEntry: Codable {
 
 // MARK: - Live Activity Attributes
 
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 struct TimerActivityAttributes: ActivityAttributes {
     // Static data (set when activity starts)
     let blockIndex: Int
@@ -101,6 +104,7 @@ struct TimerActivityAttributes: ActivityAttributes {
         let autoContinueEndAt: Date?  // when auto-continue will fire
     }
 }
+#endif
 
 // MARK: - Block Time Utilities (pure functions, no dependencies on Block model)
 

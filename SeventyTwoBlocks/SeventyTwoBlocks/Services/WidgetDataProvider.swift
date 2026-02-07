@@ -1,6 +1,8 @@
 import Foundation
 import WidgetKit
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 
 @MainActor
 final class WidgetDataProvider {
@@ -10,7 +12,9 @@ final class WidgetDataProvider {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
+    #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     private var currentActivity: Activity<TimerActivityAttributes>?
+    #endif
 
     private init() {
         encoder.dateEncodingStrategy = .secondsSince1970
@@ -110,6 +114,7 @@ final class WidgetDataProvider {
 
     // MARK: - Live Activity Management
 
+    #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     func startLiveActivity(
         blockIndex: Int,
         isBreak: Bool,
@@ -237,4 +242,11 @@ final class WidgetDataProvider {
 
         currentActivity = nil
     }
+    #else
+    // Stub methods for Mac Catalyst where Live Activities aren't available
+    func startLiveActivity(blockIndex: Int, isBreak: Bool, timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double) {}
+    func updateLiveActivity(timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double, isBreak: Bool) {}
+    func updateLiveActivityForAutoContinue(autoContinueEndAt: Date, isBreak: Bool) {}
+    func endLiveActivity() {}
+    #endif
 }
