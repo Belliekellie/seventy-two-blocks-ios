@@ -326,6 +326,9 @@ struct MainView: View {
                 let formatter = DateFormatter()
                 let _ = formatter.dateFormat = "yyyy-MM-dd"
                 BlockSheetView(blockIndex: blockIndex, date: formatter.string(from: selectedDate))
+                    .environmentObject(blockManager)
+                    .environmentObject(timerManager)
+                    .environmentObject(goalManager)
             }
         }
         .onChange(of: selectedBlockIndex) { oldValue, newValue in
@@ -338,9 +341,15 @@ struct MainView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+                .environmentObject(blockManager)
+                .environmentObject(timerManager)
+                .environmentObject(goalManager)
         }
         .sheet(isPresented: $showOverview) {
             OverviewSheetView()
+                .environmentObject(blockManager)
+                .environmentObject(timerManager)
+                .environmentObject(goalManager)
         }
         .onAppear {
             // Initialize selectedDate to logical today (accounting for dayStartHour)
