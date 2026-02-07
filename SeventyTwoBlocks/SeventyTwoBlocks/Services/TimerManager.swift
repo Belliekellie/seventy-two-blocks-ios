@@ -366,7 +366,8 @@ final class TimerManager: ObservableObject {
             if timeUntilBlockEnd > 0 {
                 pausedExpiryTimer?.invalidate()
                 pausedExpiryTimer = Timer.scheduledTimer(withTimeInterval: timeUntilBlockEnd, repeats: false) { [weak self] _ in
-                    Task { @MainActor in
+                    guard let self = self else { return }
+                    Task { @MainActor [weak self] in
                         self?.handlePausedExpiry()
                     }
                 }
