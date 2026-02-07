@@ -51,6 +51,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
         content.badge = 1
         content.categoryIdentifier = "TIMER_COMPLETE"
+        // Make it time-sensitive so it can break through some Focus modes
+        content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(
             timeInterval: max(1, date.timeIntervalSinceNow),
@@ -215,12 +217,13 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Called when a notification arrives while the app is in the foreground.
-    /// Suppress it — the in-app completion dialog handles this case.
+    /// Play the sound so user hears it even when looking at the app.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([])
+        // Play sound even in foreground - the in-app dialog handles the visual
+        completionHandler([.sound])
     }
 }
