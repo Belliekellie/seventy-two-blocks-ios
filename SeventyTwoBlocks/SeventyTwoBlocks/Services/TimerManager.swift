@@ -799,6 +799,10 @@ final class TimerManager: ObservableObject {
 
         if endAt <= Date() {
             // Timer expired while app was suspended
+            // CRITICAL: Update timeLeft to 0 so secondsUsed = initialTime
+            // This ensures the full work time is recorded, not just the time
+            // the app was active before backgrounding
+            timeLeft = 0
             handleTimerComplete()
         } else {
             // Timer still running — recalculate and restart timers
