@@ -39,13 +39,13 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
         if isCheckIn {
             content.title = "Still working?"
-            content.body = "It's been a while since you checked in. Tap Continue to keep going."
+            content.body = "Tap to check in, or hold for options."
         } else if isBreak {
             content.title = "Break Complete"
-            content.body = "Your 5-minute break is over. Ready to get back to work?"
+            content.body = "Ready to get back to work? Hold for options."
         } else {
             content.title = "Block Complete!"
-            content.body = "Great work! Block \(blockIndex + 1) is done. Keep the momentum going!"
+            content.body = "Hold for options: Continue, Break, or Stop"
         }
 
         content.sound = .default
