@@ -164,6 +164,7 @@ final class FocusSoundManager: ObservableObject {
         }
     }
 
+    #if !targetEnvironment(macCatalyst)
     private func playGeneratedNoise(type: String) {
         // Binaural beats require stereo for the beat effect
         if type == "binaural" {
@@ -315,6 +316,18 @@ final class FocusSoundManager: ObservableObject {
 
         AudioManager.shared.triggerHapticFeedback(.light)
     }
+    #else
+    // Generated sounds not available on Mac Catalyst
+    private func playGeneratedNoise(type: String) {
+        print("⚠️ Generated sounds (\(type)) not available on Mac")
+        isPlaying = false
+    }
+
+    private func playBinauralBeats() {
+        print("⚠️ Binaural beats not available on Mac")
+        isPlaying = false
+    }
+    #endif
 
     func stop() {
         // Stop crossfade timer
