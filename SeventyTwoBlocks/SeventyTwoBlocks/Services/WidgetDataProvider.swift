@@ -127,27 +127,28 @@ final class WidgetDataProvider {
     ) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        // End ALL existing activities first (handles orphans from app restart)
-        // Using a synchronous approach to ensure cleanup completes before starting new activity
+        // End ALL existing activities IMMEDIATELY before starting new one
+        // This prevents duplicate activities showing in Dynamic Island
         let existingActivities = Activity<TimerActivityAttributes>.activities
         if !existingActivities.isEmpty {
-            print("📱 Found \(existingActivities.count) existing Live Activities, ending them...")
-            Task {
-                let finalState = TimerActivityAttributes.ContentState(
-                    timerEndAt: Date(),
-                    timerStartedAt: Date(),
-                    category: nil,
-                    categoryColor: nil,
-                    label: nil,
-                    progress: 1.0,
-                    isBreak: false,
-                    isAutoContinue: false,
-                    autoContinueEndAt: nil
-                )
-                let content = ActivityContent(state: finalState, staleDate: nil)
-                for activity in existingActivities {
+            print("📱 Found \(existingActivities.count) existing Live Activities, ending them immediately...")
+            let finalState = TimerActivityAttributes.ContentState(
+                timerEndAt: Date(),
+                timerStartedAt: Date(),
+                category: nil,
+                categoryColor: nil,
+                label: nil,
+                progress: 1.0,
+                isBreak: false,
+                isAutoContinue: false,
+                autoContinueEndAt: nil
+            )
+            // Use staleDate in the past to force immediate dismissal
+            let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
+            for activity in existingActivities {
+                Task {
                     await activity.end(content, dismissalPolicy: .immediate)
-                    print("📱 Ended orphan activity: \(activity.id)")
+                    print("📱 Ended activity: \(activity.id)")
                 }
             }
         }

@@ -13,7 +13,7 @@ struct TimerLiveActivity: Widget {
             } else {
                 LockScreenBannerView(context: context)
                     .padding(16)
-                    .activityBackgroundTint(Color.fromHSL(context.state.categoryColor).opacity(0.15))
+                    .activityBackgroundTint((context.state.isBreak ? Color.red : Color.fromHSL(context.state.categoryColor)).opacity(0.15))
             }
         } dynamicIsland: { context in
             DynamicIsland {
@@ -67,7 +67,7 @@ struct TimerLiveActivity: Widget {
                     if !context.state.isAutoContinue {
                         // Animated progress bar
                         ProgressView(timerInterval: context.state.timerStartedAt...context.state.timerEndAt, countsDown: false)
-                            .tint(context.state.isBreak ? .orange : Color.fromHSL(context.state.categoryColor))
+                            .tint(context.state.isBreak ? .red : Color.fromHSL(context.state.categoryColor))
                             .labelsHidden()
                             .padding(.top, 4)
                     }
@@ -136,7 +136,7 @@ struct LockScreenBannerView: View {
                     if context.state.isBreak {
                         Text("BREAK")
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -156,7 +156,7 @@ struct LockScreenBannerView: View {
 
             // Animated progress bar
             ProgressView(timerInterval: context.state.timerStartedAt...context.state.timerEndAt, countsDown: false)
-                .tint(context.state.isBreak ? .orange : Color.fromHSL(context.state.categoryColor))
+                .tint(context.state.isBreak ? .red : Color.fromHSL(context.state.categoryColor))
                 .labelsHidden()
         }
     }
