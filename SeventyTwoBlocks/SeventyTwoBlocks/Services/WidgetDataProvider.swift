@@ -127,8 +127,31 @@ final class WidgetDataProvider {
     ) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        // End any existing activity first
-        endLiveActivity()
+        // End ALL existing activities first (handles orphans from app restart)
+        // Using a synchronous approach to ensure cleanup completes before starting new activity
+        let existingActivities = Activity<TimerActivityAttributes>.activities
+        if !existingActivities.isEmpty {
+            print("📱 Found \(existingActivities.count) existing Live Activities, ending them...")
+            Task {
+                let finalState = TimerActivityAttributes.ContentState(
+                    timerEndAt: Date(),
+                    timerStartedAt: Date(),
+                    category: nil,
+                    categoryColor: nil,
+                    label: nil,
+                    progress: 1.0,
+                    isBreak: false,
+                    isAutoContinue: false,
+                    autoContinueEndAt: nil
+                )
+                let content = ActivityContent(state: finalState, staleDate: nil)
+                for activity in existingActivities {
+                    await activity.end(content, dismissalPolicy: .immediate)
+                    print("📱 Ended orphan activity: \(activity.id)")
+                }
+            }
+        }
+        currentActivity = nil
 
         let attributes = TimerActivityAttributes(
             blockIndex: blockIndex,
@@ -221,8 +244,8 @@ final class WidgetDataProvider {
     }
 
     func endLiveActivity() {
-        guard let activity = currentActivity else { return }
-
+        // End ALL running activities of this type, not just the one we have a reference to
+        // This handles orphaned activities from app termination/restart or race conditions
         Task {
             let finalState = TimerActivityAttributes.ContentState(
                 timerEndAt: Date(),
@@ -236,8 +259,12 @@ final class WidgetDataProvider {
                 autoContinueEndAt: nil
             )
             let content = ActivityContent(state: finalState, staleDate: nil)
-            await activity.end(content, dismissalPolicy: .immediate)
-            print("📱 Live Activity ended")
+
+            // End all activities of this type
+            for activity in Activity<TimerActivityAttributes>.activities {
+                await activity.end(content, dismissalPolicy: .immediate)
+                print("📱 Live Activity ended: \(activity.id)")
+            }
         }
 
         currentActivity = nil

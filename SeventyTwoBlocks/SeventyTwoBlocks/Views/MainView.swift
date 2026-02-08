@@ -485,7 +485,12 @@ struct MainView: View {
                 }
             }
 
-            // 7. Reload blocks, goals, and auto-skip
+            // 7. Clean up orphaned Live Activities if timer is not running
+            if !timerManager.isActive && !timerManager.isPaused && !timerManager.showTimerComplete && !timerManager.showBreakComplete {
+                WidgetDataProvider.shared.endLiveActivity()
+            }
+
+            // 8. Reload blocks, goals, and auto-skip
             if isToday {
                 Task {
                     await blockManager.reloadBlocks()
