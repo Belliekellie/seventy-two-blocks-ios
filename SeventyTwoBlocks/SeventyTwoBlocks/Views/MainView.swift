@@ -555,7 +555,9 @@ struct MainView: View {
                 _ = await (blocksLoad, goalsLoad)
             }
         }
-        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
+            // Check every 10 seconds for block changes to catch transitions faster
+            // This ensures blocks get marked as done promptly after their time passes
             checkForBlockChange()
         }
     }
@@ -1059,6 +1061,18 @@ struct MainView: View {
         timerManager.dismissBreakComplete()
         NotificationManager.shared.cancelAllNotifications()
         WidgetDataProvider.shared.endLiveActivity()
+
+        // Run auto-skip immediately to mark past blocks with usage as done
+        // This ensures blocks stopped near their end time get properly marked
+        if isToday {
+            Task {
+                await blockManager.processAutoSkip(
+                    currentBlockIndex: currentBlockIndex,
+                    timerBlockIndex: nil,  // Timer is stopped, no active block
+                    blocksWithTimerUsage: blocksWithTimerUsage
+                )
+            }
+        }
         print("🛑 handleStop complete - timer stopped and all dialogs dismissed")
     }
 
