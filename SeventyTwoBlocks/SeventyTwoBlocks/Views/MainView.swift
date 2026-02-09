@@ -439,12 +439,14 @@ struct MainView: View {
                 NotificationManager.shared.pendingActionBlockIndex = nil
 
                 // Check if this is a stale notification (from a past block)
-                // A notification is stale if it's for a block that has already ended
+                // Notifications fire at the END of a block, and their actions affect the NEXT block.
+                // e.g., notification for block 32 fires at 11:00, actions start block 33
+                // So the notification is valid while we're in block 33 (notifBlock + 1 == currentBlock)
+                // It's only stale when block 33 has ALSO passed (notifBlock + 1 < currentBlock)
                 let isStaleNotification: Bool = {
                     guard let notifBlock = notificationBlockIndex else { return false }
-                    // If the notification is for a block that's already in the past, it's stale
-                    // Current block index is the block we're currently IN, so anything before it is stale
-                    return notifBlock < currentBlockIndex
+                    // Stale if the NEXT block after the notification has also passed
+                    return notifBlock + 1 < currentBlockIndex
                 }()
 
                 if isStaleNotification {
