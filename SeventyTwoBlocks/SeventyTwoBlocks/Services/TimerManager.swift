@@ -304,7 +304,8 @@ final class TimerManager: ObservableObject {
         // Capture visual fill BEFORE clearing state
         let capturedVisualFill = currentVisualFill
 
-        print("⏱️ Timer stopped - used \(used)s, totalSegments: \(finalSegments.count), visualFill: \(String(format: "%.1f%%", capturedVisualFill * 100))")
+        let totalSegmentSeconds = finalSegments.reduce(0) { $0 + $1.seconds }
+        print("⏱️ Timer stopped - used=\(used)s, previousSegs=\(previousSegments.count) (\(previousSegments.reduce(0) { $0 + $1.seconds })s), liveSegs=\(liveSegments.count) (\(liveSegments.reduce(0) { $0 + $1.seconds })s), totalSegmentSeconds=\(totalSegmentSeconds)s, visualFill=\(String(format: "%.1f%%", capturedVisualFill * 100))")
 
         // Stop tick timers immediately (but don't clear @Published state yet)
         timer?.invalidate()
@@ -752,6 +753,8 @@ final class TimerManager: ObservableObject {
         let elapsed = secondsUsed
         let segmentDuration = elapsed - currentSegmentStartElapsed
 
+        print("⏱️ finalizeCurrentSegment: elapsed=\(elapsed)s, currentSegmentStartElapsed=\(currentSegmentStartElapsed), segmentDuration=\(segmentDuration)s, initialTime=\(initialTime), timeLeft=\(timeLeft)")
+
         if segmentDuration > 0 {
             let segment = BlockSegment(
                 type: currentSegmentType,
@@ -761,8 +764,11 @@ final class TimerManager: ObservableObject {
                 startElapsed: currentSegmentStartElapsed
             )
             liveSegments.append(segment)
+            print("⏱️ Created segment: \(segmentDuration)s \(currentSegmentType), liveSegments now has \(liveSegments.count) segments totaling \(liveSegments.reduce(0) { $0 + $1.seconds })s")
             // Update start position so liveSegmentsIncludingCurrent doesn't double-count
             currentSegmentStartElapsed = elapsed
+        } else {
+            print("⏱️ No segment created (duration <= 0)")
         }
     }
 
