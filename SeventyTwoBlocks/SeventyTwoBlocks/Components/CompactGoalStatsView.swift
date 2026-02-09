@@ -20,13 +20,11 @@ struct CompactGoalStatsView: View {
             let workSeconds = block.segments
                 .filter { $0.type == .work }
                 .reduce(0) { $0 + $1.seconds }
-            let adjustedSeconds: Int
+            // Round up to 20m if >= 19 minutes (autocontinue/completion)
             if workSeconds >= 19 * 60 {
-                adjustedSeconds = 20 * 60
-            } else {
-                adjustedSeconds = workSeconds
+                return total + 20 * 60
             }
-            return total + adjustedSeconds
+            return total + workSeconds
         }
     }
 

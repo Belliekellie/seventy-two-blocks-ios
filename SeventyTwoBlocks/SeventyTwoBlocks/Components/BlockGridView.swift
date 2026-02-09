@@ -741,7 +741,6 @@ struct BlockItemView: View {
     }
 
     /// Calculate display minutes from segments (preferred) or usedSeconds (fallback)
-    /// Uses standard rounding (30s+ rounds up), except blocks that completed naturally show 20m
     /// Returns nil if no time should be displayed
     private func calculateDisplayMinutes() -> Int? {
         // Skipped blocks should not show time (even if they have legacy data)
@@ -760,16 +759,13 @@ struct BlockItemView: View {
             return nil
         }
 
+        // Round up to 20m if worked >= 19 minutes (autocontinue/completion scenario)
+        // This credits blocks that ran to the block boundary
         let displayMinutes: Int
-
-        // If block completed naturally (timer ran to block boundary), always show 20m
-        // This handles autocontinue and popup-to-completion scenarios
-        let completedNaturally = (block?.visualFill ?? 0) >= 1.0
-        if completedNaturally {
+        if totalSeconds >= 19 * 60 {
             displayMinutes = 20
         } else {
             // Standard rounding: 30s+ rounds up to next minute
-            // e.g., 19m 30s → 20m, 19m 29s → 19m
             displayMinutes = (totalSeconds + 30) / 60
         }
 

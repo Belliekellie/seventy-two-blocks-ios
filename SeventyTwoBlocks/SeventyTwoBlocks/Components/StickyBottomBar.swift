@@ -19,6 +19,7 @@ struct StickyBottomBar: View {
             let workSeconds = block.segments
                 .filter { $0.type == .work }
                 .reduce(0) { $0 + $1.seconds }
+            // Round up to 20m if >= 19 minutes (autocontinue/completion)
             return total + (workSeconds >= 19 * 60 ? 20 * 60 : workSeconds)
         }
     }

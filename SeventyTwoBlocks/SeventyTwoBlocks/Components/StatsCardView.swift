@@ -21,16 +21,12 @@ struct StatsCardView: View {
                 .filter { $0.type == .work }
                 .reduce(0) { $0 + $1.seconds }
 
-            // Round up to 20m (1200s) if worked >= 19 minutes (95% of block)
-            // This credits auto-continue and quick starts without penalizing small gaps
-            let adjustedSeconds: Int
+            // Round up to 20m (1200s) if worked >= 19 minutes
+            // This credits autocontinue blocks that ran to completion
             if workSeconds >= 19 * 60 {
-                adjustedSeconds = 20 * 60
-            } else {
-                adjustedSeconds = workSeconds
+                return total + 20 * 60
             }
-
-            return total + adjustedSeconds
+            return total + workSeconds
         }
     }
 

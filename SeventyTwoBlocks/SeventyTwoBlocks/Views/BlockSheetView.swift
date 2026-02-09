@@ -1455,7 +1455,7 @@ struct TimeBreakdownView: View {
 
                     Spacer()
 
-                    // Round up to 20m if >= 95%
+                    // Round up to 20m if >= 19m (autocontinue/completion scenario)
                     let displaySeconds = block.status == .done && block.usedSeconds >= 19 * 60 ? 20 * 60 : block.usedSeconds
                     Text(formatDuration(displaySeconds))
                         .font(.subheadline.weight(.semibold))
