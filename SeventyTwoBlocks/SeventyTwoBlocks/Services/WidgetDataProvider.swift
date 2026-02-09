@@ -162,6 +162,11 @@ final class WidgetDataProvider {
             isBreak: isBreak
         )
 
+        // Pre-set autoContinueEndAt so Live Activity can automatically switch when timer expires
+        // This allows the Live Activity to show the auto-continue countdown even without an app update
+        let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
+        let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
+
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -171,10 +176,11 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: nil
+            autoContinueEndAt: autoContinueEndAt  // Pre-set for automatic switching
         )
 
-        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(60))
+        // Stale date is when the auto-continue countdown expires
+        let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
 
         do {
             let activity = try Activity.request(
@@ -200,6 +206,10 @@ final class WidgetDataProvider {
     ) {
         guard let activity = currentActivity else { return }
 
+        // Pre-set autoContinueEndAt so Live Activity can automatically switch when timer expires
+        let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
+        let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
+
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -209,10 +219,10 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: nil
+            autoContinueEndAt: autoContinueEndAt  // Pre-set for automatic switching
         )
 
-        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(60))
+        let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
 
         Task {
             await activity.update(content)

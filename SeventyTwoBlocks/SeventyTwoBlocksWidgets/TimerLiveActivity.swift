@@ -6,18 +6,25 @@ struct TimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TimerActivityAttributes.self) { context in
             // Lock screen banner view
-            if context.state.isAutoContinue {
-                AutoContinueBannerView(context: context)
-                    .padding(16)
-                    .activityBackgroundTint(Color.green.opacity(0.15))
-            } else {
-                LockScreenBannerView(context: context)
-                    .padding(16)
-                    .activityBackgroundTint((context.state.isBreak ? Color.red : Color.fromHSL(context.state.categoryColor)).opacity(0.15))
+            // Use TimelineView to re-evaluate when timerEndAt passes
+            TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                let now = timeline.date
+                let timerExpired = now >= context.state.timerEndAt
+                let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                if showAutoContinue {
+                    AutoContinueBannerView(context: context, timerExpired: timerExpired)
+                        .padding(16)
+                        .activityBackgroundTint(Color.green.opacity(0.15))
+                } else {
+                    LockScreenBannerView(context: context)
+                        .padding(16)
+                        .activityBackgroundTint((context.state.isBreak ? Color.red : Color.fromHSL(context.state.categoryColor)).opacity(0.15))
+                }
             }
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded view
+                // Expanded view - use TimelineView for smart switching
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("BLOCK \(context.attributes.blockDisplayNumber)")
@@ -29,79 +36,115 @@ struct TimerLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    if context.state.isAutoContinue, let endAt = context.state.autoContinueEndAt {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(endAt, style: .timer)
-                                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                        let now = timeline.date
+                        let timerExpired = now >= context.state.timerEndAt
+                        let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                        if showAutoContinue, let endAt = context.state.autoContinueEndAt {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(endAt, style: .timer)
+                                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                                    .monospacedDigit()
+                                Text("AUTO")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.green)
+                            }
+                        } else {
+                            Text(context.state.timerEndAt, style: .timer)
+                                .font(.system(size: 22, weight: .bold, design: .monospaced))
                                 .monospacedDigit()
-                            Text("AUTO")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.green)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         }
-                    } else {
-                        Text(context.state.timerEndAt, style: .timer)
-                            .font(.system(size: 22, weight: .bold, design: .monospaced))
-                            .monospacedDigit()
-                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    if context.state.isAutoContinue {
-                        Text("Continuing...")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.green)
-                    } else if let label = context.state.label ?? context.state.category {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.fromHSL(context.state.categoryColor))
-                                .frame(width: 8, height: 8)
-                            Text(label)
+                    TimelineView(.explicit([context.state.timerEndAt])) { timeline in
+                        let now = timeline.date
+                        let timerExpired = now >= context.state.timerEndAt
+                        let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                        if showAutoContinue {
+                            Text("Continuing...")
                                 .font(.system(size: 13, weight: .medium))
-                                .lineLimit(1)
+                                .foregroundStyle(.green)
+                        } else if let label = context.state.label ?? context.state.category {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.fromHSL(context.state.categoryColor))
+                                    .frame(width: 8, height: 8)
+                                Text(label)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .lineLimit(1)
+                            }
                         }
                     }
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    if !context.state.isAutoContinue {
-                        // Animated progress bar
-                        ProgressView(timerInterval: context.state.timerStartedAt...context.state.timerEndAt, countsDown: false)
-                            .tint(context.state.isBreak ? .red : Color.fromHSL(context.state.categoryColor))
-                            .labelsHidden()
-                            .padding(.top, 4)
+                    TimelineView(.explicit([context.state.timerEndAt])) { timeline in
+                        let now = timeline.date
+                        let timerExpired = now >= context.state.timerEndAt
+                        let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                        if !showAutoContinue {
+                            // Animated progress bar
+                            ProgressView(timerInterval: context.state.timerStartedAt...context.state.timerEndAt, countsDown: false)
+                                .tint(context.state.isBreak ? .red : Color.fromHSL(context.state.categoryColor))
+                                .labelsHidden()
+                                .padding(.top, 4)
+                        }
                     }
                 }
             } compactLeading: {
-                if context.state.isAutoContinue {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.green)
-                } else {
-                    Text("#B\(context.attributes.blockDisplayNumber)")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                TimelineView(.explicit([context.state.timerEndAt])) { timeline in
+                    let now = timeline.date
+                    let timerExpired = now >= context.state.timerEndAt
+                    let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                    if showAutoContinue {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("#B\(context.attributes.blockDisplayNumber)")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    }
                 }
             } compactTrailing: {
-                if context.state.isAutoContinue, let endAt = context.state.autoContinueEndAt {
-                    Text(endAt, style: .timer)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(.green)
-                } else {
-                    Text(context.state.timerEndAt, style: .timer)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .monospacedDigit()
+                TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                    let now = timeline.date
+                    let timerExpired = now >= context.state.timerEndAt
+                    let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                    if showAutoContinue, let endAt = context.state.autoContinueEndAt {
+                        Text(endAt, style: .timer)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundStyle(.green)
+                    } else {
+                        Text(context.state.timerEndAt, style: .timer)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .monospacedDigit()
+                    }
                 }
             } minimal: {
-                if context.state.isAutoContinue, let endAt = context.state.autoContinueEndAt {
-                    Text(endAt, style: .timer)
-                        .font(.system(size: 11, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(.green)
-                } else {
-                    Text(context.state.timerEndAt, style: .timer)
-                        .font(.system(size: 11, design: .monospaced))
-                        .monospacedDigit()
+                TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                    let now = timeline.date
+                    let timerExpired = now >= context.state.timerEndAt
+                    let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+
+                    if showAutoContinue, let endAt = context.state.autoContinueEndAt {
+                        Text(endAt, style: .timer)
+                            .font(.system(size: 11, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundStyle(.green)
+                    } else {
+                        Text(context.state.timerEndAt, style: .timer)
+                            .font(.system(size: 11, design: .monospaced))
+                            .monospacedDigit()
+                    }
                 }
             }
         }
@@ -166,6 +209,7 @@ struct LockScreenBannerView: View {
 
 struct AutoContinueBannerView: View {
     let context: ActivityViewContext<TimerActivityAttributes>
+    var timerExpired: Bool = false
 
     var body: some View {
         VStack(spacing: 10) {

@@ -427,6 +427,7 @@ struct MainView: View {
             // 6. If user tapped a notification action, execute it now
             //    (this dismisses any dialog that restoreFromBackground showed)
             if let action = NotificationManager.shared.pendingAction {
+                print("📲 Processing notification action: \(action)")
                 NotificationManager.shared.pendingAction = nil
                 // User explicitly tapped a notification action — reset check-in counter
                 timerManager.resetInteractionCounter()
@@ -644,6 +645,13 @@ struct MainView: View {
     }
 
     private func saveSnapshot(blockIndex: Int, date: String, snapshot: Run) async {
+        // Don't save if user has clicked Stop on notification but it hasn't been processed yet
+        // This prevents the autosave timer from saving stale data after the user intended to stop
+        if NotificationManager.shared.pendingAction == "stop" {
+            print("💾 saveSnapshot: Skipping - stop action pending")
+            return
+        }
+
         guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
             print("💾 saveSnapshot: Block \(blockIndex) not found")
             return
@@ -1000,14 +1008,20 @@ struct MainView: View {
     }
 
     private func handleStop() {
+        print("🛑 handleStop called - isActive: \(timerManager.isActive), showTimerComplete: \(timerManager.showTimerComplete), showBreakComplete: \(timerManager.showBreakComplete)")
         // Stop the timer if still running (e.g., mid-block break notification)
         if timerManager.isActive {
             timerManager.stopTimer(markComplete: false)
+        }
+        // Also dismiss paused expiry if shown
+        if timerManager.showPausedExpiry {
+            timerManager.dismissPausedExpiry()
         }
         timerManager.dismissTimerComplete()
         timerManager.dismissBreakComplete()
         NotificationManager.shared.cancelAllNotifications()
         WidgetDataProvider.shared.endLiveActivity()
+        print("🛑 handleStop complete - timer stopped and all dialogs dismissed")
     }
 
     private func handleSkipNextBlock() {

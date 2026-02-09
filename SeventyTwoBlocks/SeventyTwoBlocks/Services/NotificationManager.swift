@@ -154,7 +154,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let stopAction = UNNotificationAction(
             identifier: "STOP",
             title: "Stop",
-            options: [.destructive]
+            options: [.destructive, .foreground]  // Must bring app to foreground to actually stop timer
         )
 
         let timerCompleteCategory = UNNotificationCategory(
@@ -201,16 +201,22 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         switch response.actionIdentifier {
         case "CONTINUE":
             pendingAction = "continue"
+            print("📲 Notification action received: CONTINUE")
         case "TAKE_BREAK":
             pendingAction = "takeBreak"
+            print("📲 Notification action received: TAKE_BREAK")
         case "STOP":
             pendingAction = "stop"
+            print("📲 Notification action received: STOP")
         case "NEW_BLOCK":
             pendingAction = "newBlock"
+            print("📲 Notification action received: NEW_BLOCK")
         case UNNotificationDefaultActionIdentifier:
             // User tapped the notification body — app opens, no specific action
+            print("📲 Notification body tapped (default action)")
             break
         default:
+            print("📲 Unknown notification action: \(response.actionIdentifier)")
             break
         }
         completionHandler()

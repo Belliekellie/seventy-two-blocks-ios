@@ -813,13 +813,18 @@ final class TimerManager: ObservableObject {
     /// Called when app returns to foreground. If the timer expired while backgrounded,
     /// triggers completion. Otherwise recalculates timeLeft and restarts tick timers.
     func restoreFromBackground() {
-        guard isActive, let endAt = endAt else { return }
+        print("🔄 restoreFromBackground: isActive=\(isActive), endAt=\(endAt?.description ?? "nil")")
+        guard isActive, let endAt = endAt else {
+            print("🔄 restoreFromBackground: skipping (not active or no endAt)")
+            return
+        }
 
         if endAt <= Date() {
             // Timer expired while app was suspended
             // CRITICAL: Update timeLeft to 0 so secondsUsed = initialTime
             // This ensures the full work time is recorded, not just the time
             // the app was active before backgrounding
+            print("🔄 restoreFromBackground: timer expired, completing")
             timeLeft = 0
             handleTimerComplete()
         } else {
@@ -828,6 +833,7 @@ final class TimerManager: ObservableObject {
             if initialTime > 0 {
                 progress = Double(secondsUsed) / Double(initialTime) * 100
             }
+            print("🔄 restoreFromBackground: timer still running, timeLeft=\(timeLeft)s")
             startTickTimer()
             startAutosaveTimer()
 
