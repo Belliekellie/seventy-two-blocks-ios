@@ -28,7 +28,7 @@ struct CompactHeaderView: View {
     var body: some View {
         ZStack {
             // Date navigation - true center, constrained width to match block grid center column
-            HStack(spacing: 12) {
+            HStack(spacing: 4) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate) ?? selectedDate
@@ -37,6 +37,8 @@ struct CompactHeaderView: View {
                     Image(systemName: "chevron.left")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.primary)
+                        .frame(width: 44, height: 44)  // Larger tap target
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -67,6 +69,8 @@ struct CompactHeaderView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.primary)
+                        .frame(width: 44, height: 44)  // Larger tap target
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

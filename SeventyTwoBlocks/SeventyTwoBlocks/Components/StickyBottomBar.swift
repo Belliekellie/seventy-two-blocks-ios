@@ -43,8 +43,8 @@ struct StickyBottomBar: View {
                 HStack(spacing: 0) {
                     // Focus Sounds (left)
                     VStack(spacing: 4) {
-                        HStack(spacing: 6) {
-                            // Small play/stop toggle button
+                        HStack(spacing: 2) {
+                            // Small play/stop toggle button - visual is small but tap target is larger
                             Button {
                                 if soundManager.isPlaying {
                                     soundManager.stop()
@@ -60,10 +60,12 @@ struct StickyBottomBar: View {
                                     .frame(width: 18, height: 18)
                                     .background(soundManager.isPlaying ? Color.red : Color.blue)
                                     .clipShape(Circle())
+                                    .frame(width: 36, height: 36)  // Larger tap target
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
 
-                            // Sound name pill (opens picker)
+                            // Sound name pill (opens picker) - larger tap target
                             Button {
                                 showSoundPicker = true
                             } label: {
@@ -74,15 +76,16 @@ struct StickyBottomBar: View {
                                     Image(systemName: "chevron.up")
                                         .font(.system(size: 7, weight: .semibold))
                                 }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
                                 .background(Color.gray.opacity(0.12))
                                 .foregroundStyle(.primary)
                                 .clipShape(Capsule())
+                                .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                         }
-                        .frame(height: 22)
+                        .frame(height: 36)
                         Text("Focus Sounds")
                             .font(.caption)
                             .foregroundStyle(.secondary)

@@ -234,6 +234,8 @@ struct WeeklyOverviewContent: View {
                     } label: {
                         Image(systemName: "chevron.left")
                             .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(selectedWeekOffset >= 12)
 
@@ -249,10 +251,11 @@ struct WeeklyOverviewContent: View {
                     } label: {
                         Image(systemName: "chevron.right")
                             .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(selectedWeekOffset == 0)
                 }
-                .padding(.horizontal)
 
                 if isLoading {
                     ProgressView()
@@ -393,6 +396,8 @@ struct MonthlyOverviewContent: View {
                         selectedMonthOffset = min(selectedMonthOffset + 1, 12)
                     } label: {
                         Image(systemName: "chevron.left")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(selectedMonthOffset >= 12)
 
@@ -407,10 +412,11 @@ struct MonthlyOverviewContent: View {
                         selectedMonthOffset = max(selectedMonthOffset - 1, 0)
                     } label: {
                         Image(systemName: "chevron.right")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(selectedMonthOffset == 0)
                 }
-                .padding(.horizontal)
 
                 if isLoading {
                     ProgressView()
@@ -522,6 +528,8 @@ struct YearlyOverviewContent: View {
                         selectedYear -= 1
                     } label: {
                         Image(systemName: "chevron.left")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(selectedYear <= 2020)
 
@@ -536,10 +544,11 @@ struct YearlyOverviewContent: View {
                         selectedYear += 1
                     } label: {
                         Image(systemName: "chevron.right")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(selectedYear >= Calendar.current.component(.year, from: Date()))
                 }
-                .padding(.horizontal)
 
                 if isLoading {
                     ProgressView()
@@ -793,11 +802,12 @@ struct CategoryRowWithLabels: View {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 14)
+                            .frame(width: 32, height: 32)  // Larger tap target
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Spacer().frame(width: 14)
+                    Spacer().frame(width: 32)
                 }
 
                 Circle()

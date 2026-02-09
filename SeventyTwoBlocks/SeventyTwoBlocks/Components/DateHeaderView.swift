@@ -31,6 +31,8 @@ struct DateHeaderView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.title3)
+                    .frame(width: 44, height: 44)  // Larger tap target
+                    .contentShape(Rectangle())
             }
 
             Spacer()
@@ -51,9 +53,11 @@ struct DateHeaderView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.title3)
+                    .frame(width: 44, height: 44)  // Larger tap target
+                    .contentShape(Rectangle())
             }
         }
-        .padding()
+        .padding(.vertical)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             if isToday {
