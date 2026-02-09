@@ -9,6 +9,10 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Checked synchronously after restoreFromBackground() to avoid race conditions.
     var pendingAction: String?
 
+    /// Block index from the notification that triggered the action.
+    /// Used to detect stale notifications (e.g., user tapped an old notification).
+    var pendingActionBlockIndex: Int?
+
     private override init() {
         super.init()
         notificationCenter.delegate = self
@@ -198,6 +202,18 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        // Extract block index from notification identifier (format: "timer_complete_\(blockIndex)")
+        let identifier = response.notification.request.identifier
+        if identifier.hasPrefix("timer_complete_") {
+            let blockIndexStr = identifier.replacingOccurrences(of: "timer_complete_", with: "")
+            pendingActionBlockIndex = Int(blockIndexStr)
+            print("📲 Notification for block: \(pendingActionBlockIndex ?? -1)")
+        } else if identifier.hasPrefix("break_reminder_") {
+            let blockIndexStr = identifier.replacingOccurrences(of: "break_reminder_", with: "")
+            pendingActionBlockIndex = Int(blockIndexStr)
+            print("📲 Break reminder for block: \(pendingActionBlockIndex ?? -1)")
+        }
+
         switch response.actionIdentifier {
         case "CONTINUE":
             pendingAction = "continue"

@@ -17,6 +17,7 @@ struct MainView: View {
     @State private var blocksWithTimerUsage: Set<Int> = []
     @State private var showDayEndDialog = false
     @State private var continuedPastDayEnd = false
+    @State private var showStaleNotificationAlert = false
 
     private var currentBlockIndex: Int {
         Block.getCurrentBlockIndex()
@@ -364,6 +365,11 @@ struct MainView: View {
                 .environmentObject(timerManager)
                 .environmentObject(goalManager)
         }
+        .alert("Old Notification", isPresented: $showStaleNotificationAlert) {
+            Button("OK") { }
+        } message: {
+            Text("This notification was for a block that has already ended. Your current progress has been saved.")
+        }
         .onAppear {
             // Initialize selectedDate to logical today (accounting for dayStartHour)
             selectedDate = logicalToday
@@ -427,22 +433,46 @@ struct MainView: View {
             // 6. If user tapped a notification action, execute it now
             //    (this dismisses any dialog that restoreFromBackground showed)
             if let action = NotificationManager.shared.pendingAction {
-                print("📲 Processing notification action: \(action)")
+                let notificationBlockIndex = NotificationManager.shared.pendingActionBlockIndex
+                print("📲 Processing notification action: \(action) for block \(notificationBlockIndex ?? -1), current block: \(currentBlockIndex)")
                 NotificationManager.shared.pendingAction = nil
-                // User explicitly tapped a notification action — reset check-in counter
-                timerManager.resetInteractionCounter()
-                switch action {
-                case "continue":
-                    handleContinueWork()
-                case "takeBreak": handleTakeBreak()
-                case "newBlock":
+                NotificationManager.shared.pendingActionBlockIndex = nil
+
+                // Check if this is a stale notification (from a past block)
+                // A notification is stale if it's for a block that has already ended
+                let isStaleNotification: Bool = {
+                    guard let notifBlock = notificationBlockIndex else { return false }
+                    // If the notification is for a block that's already in the past, it's stale
+                    // Current block index is the block we're currently IN, so anything before it is stale
+                    return notifBlock < currentBlockIndex
+                }()
+
+                if isStaleNotification {
+                    // Stale notification - dismiss any dialogs and show message
+                    print("📲 Ignoring stale notification action from block \(notificationBlockIndex ?? -1)")
                     timerManager.dismissTimerComplete()
                     timerManager.dismissBreakComplete()
+                    NotificationManager.shared.cancelAllNotifications()
                     WidgetDataProvider.shared.endLiveActivity()
-                    // Open the blocksheet for the current block
-                    selectedBlockIndex = currentBlockIndex
-                case "stop": handleStop()
-                default: break
+                    // Show alert to user
+                    showStaleNotificationAlert = true
+                } else {
+                    // Valid notification - process the action
+                    // User explicitly tapped a notification action — reset check-in counter
+                    timerManager.resetInteractionCounter()
+                    switch action {
+                    case "continue":
+                        handleContinueWork()
+                    case "takeBreak": handleTakeBreak()
+                    case "newBlock":
+                        timerManager.dismissTimerComplete()
+                        timerManager.dismissBreakComplete()
+                        WidgetDataProvider.shared.endLiveActivity()
+                        // Open the blocksheet for the current block
+                        selectedBlockIndex = currentBlockIndex
+                    case "stop": handleStop()
+                    default: break
+                    }
                 }
             } else {
                 // 6b. No notification action — user just opened the app.
