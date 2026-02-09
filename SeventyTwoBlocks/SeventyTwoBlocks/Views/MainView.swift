@@ -368,7 +368,7 @@ struct MainView: View {
         .alert("Old Notification", isPresented: $showStaleNotificationAlert) {
             Button("OK") { }
         } message: {
-            Text("This notification was for a block that has already ended. Your current progress has been saved.")
+            Text("That notification was for a block that has already ended. Use the app to manage your current session.")
         }
         .onAppear {
             // Initialize selectedDate to logical today (accounting for dayStartHour)
@@ -448,13 +448,21 @@ struct MainView: View {
                 }()
 
                 if isStaleNotification {
-                    // Stale notification - dismiss any dialogs and show message
+                    // Stale notification - just show an alert, don't take any action
+                    // This prevents old notifications from affecting the current timer state
                     print("📲 Ignoring stale notification action from block \(notificationBlockIndex ?? -1)")
-                    timerManager.dismissTimerComplete()
-                    timerManager.dismissBreakComplete()
-                    NotificationManager.shared.cancelAllNotifications()
-                    WidgetDataProvider.shared.endLiveActivity()
-                    // Show alert to user
+
+                    // Only clean up if there's nothing actively running
+                    // If timer is running or a dialog is showing, leave everything as-is
+                    // so the user can interact with the current state
+                    if !timerManager.isActive && !timerManager.isPaused &&
+                       !timerManager.showTimerComplete && !timerManager.showBreakComplete {
+                        // Nothing active - safe to clean up any orphaned state
+                        NotificationManager.shared.cancelAllNotifications()
+                        WidgetDataProvider.shared.endLiveActivity()
+                    }
+
+                    // Show alert to explain why the action was ignored
                     showStaleNotificationAlert = true
                 } else {
                     // Valid notification - process the action
