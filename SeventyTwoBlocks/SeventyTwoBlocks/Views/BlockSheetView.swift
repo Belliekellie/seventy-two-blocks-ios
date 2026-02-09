@@ -974,16 +974,20 @@ struct BlockSheetView: View {
 
     private func startLiveActivity(blockIndex: Int, isBreak: Bool, category: String?, label: String?) {
         let categoryColor = blockManager.categories.first { $0.id == category }?.color
-        WidgetDataProvider.shared.startLiveActivity(
-            blockIndex: blockIndex,
-            isBreak: isBreak,
-            timerEndAt: Block.blockEndDate(for: blockIndex),
-            timerStartedAt: Date(),
-            category: category,
-            categoryColor: categoryColor,
-            label: label,
-            progress: 0
-        )
+        // Wrap in Task since startLiveActivity is now async
+        // This ensures old activities are fully ended before new one starts (prevents duplicates)
+        Task {
+            await WidgetDataProvider.shared.startLiveActivity(
+                blockIndex: blockIndex,
+                isBreak: isBreak,
+                timerEndAt: Block.blockEndDate(for: blockIndex),
+                timerStartedAt: Date(),
+                category: category,
+                categoryColor: categoryColor,
+                label: label,
+                progress: 0
+            )
+        }
     }
 
     private func startTimerAsBreak() {

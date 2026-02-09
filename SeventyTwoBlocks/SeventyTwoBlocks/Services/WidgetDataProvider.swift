@@ -124,14 +124,14 @@ final class WidgetDataProvider {
         categoryColor: String?,
         label: String?,
         progress: Double
-    ) {
+    ) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        // End ALL existing activities IMMEDIATELY before starting new one
-        // This prevents duplicate activities showing in Dynamic Island
+        // End ALL existing activities BEFORE starting new one
+        // This prevents duplicate activities showing in Dynamic Island (race condition fix)
         let existingActivities = Activity<TimerActivityAttributes>.activities
         if !existingActivities.isEmpty {
-            print("📱 Found \(existingActivities.count) existing Live Activities, ending them immediately...")
+            print("📱 Found \(existingActivities.count) existing Live Activities, ending them before starting new one...")
             let finalState = TimerActivityAttributes.ContentState(
                 timerEndAt: Date(),
                 timerStartedAt: Date(),
@@ -145,10 +145,14 @@ final class WidgetDataProvider {
             )
             // Use staleDate in the past to force immediate dismissal
             let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
-            for activity in existingActivities {
-                Task {
-                    await activity.end(content, dismissalPolicy: .immediate)
-                    print("📱 Ended activity: \(activity.id)")
+
+            // Await all activities ending before continuing
+            await withTaskGroup(of: Void.self) { group in
+                for activity in existingActivities {
+                    group.addTask {
+                        await activity.end(content, dismissalPolicy: .immediate)
+                        print("📱 Ended activity: \(activity.id)")
+                    }
                 }
             }
         }
@@ -272,7 +276,7 @@ final class WidgetDataProvider {
     }
     #else
     // Stub methods for Mac Catalyst where Live Activities aren't available
-    func startLiveActivity(blockIndex: Int, isBreak: Bool, timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double) {}
+    func startLiveActivity(blockIndex: Int, isBreak: Bool, timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double) async {}
     func updateLiveActivity(timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double, isBreak: Bool) {}
     func updateLiveActivityForAutoContinue(autoContinueEndAt: Date, isBreak: Bool) {}
     func endLiveActivity() {}

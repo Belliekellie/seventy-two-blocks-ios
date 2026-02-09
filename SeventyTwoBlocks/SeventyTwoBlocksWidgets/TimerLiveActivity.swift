@@ -78,7 +78,7 @@ struct TimerLiveActivity: Widget {
                         .font(.system(size: 10))
                         .foregroundStyle(.green)
                 } else {
-                    Text(context.attributes.blockStartTime)
+                    Text("#B\(context.attributes.blockDisplayNumber)")
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                 }
             } compactTrailing: {
