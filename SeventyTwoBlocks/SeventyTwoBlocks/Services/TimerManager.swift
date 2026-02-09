@@ -761,6 +761,8 @@ final class TimerManager: ObservableObject {
                 startElapsed: currentSegmentStartElapsed
             )
             liveSegments.append(segment)
+            // Update start position so liveSegmentsIncludingCurrent doesn't double-count
+            currentSegmentStartElapsed = elapsed
         }
     }
 
