@@ -162,11 +162,9 @@ final class WidgetDataProvider {
             isBreak: isBreak
         )
 
-        // Pre-set autoContinueEndAt so Live Activity can automatically switch when timer expires
-        // This allows the Live Activity to show the auto-continue countdown even without an app update
-        let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
-        let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
-
+        // Don't pre-set autoContinueEndAt - only set it when timer actually completes
+        // Pre-setting it caused issues where the Live Activity would show "Block Complete"
+        // if there was any timing glitch at startup
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -176,11 +174,11 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: autoContinueEndAt  // Pre-set for automatic switching
+            autoContinueEndAt: nil  // Only set when timer completes via updateLiveActivityForAutoContinue
         )
 
-        // Stale date is when the auto-continue countdown expires
-        let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
+        // Stale date is well after the timer should end
+        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(120))
 
         do {
             let activity = try Activity.request(
@@ -206,10 +204,7 @@ final class WidgetDataProvider {
     ) {
         guard let activity = currentActivity else { return }
 
-        // Pre-set autoContinueEndAt so Live Activity can automatically switch when timer expires
-        let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
-        let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
-
+        // Don't pre-set autoContinueEndAt - only set via updateLiveActivityForAutoContinue
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -219,10 +214,10 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: autoContinueEndAt  // Pre-set for automatic switching
+            autoContinueEndAt: nil
         )
 
-        let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
+        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(120))
 
         Task {
             await activity.update(content)
