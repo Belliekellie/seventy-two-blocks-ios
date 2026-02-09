@@ -194,7 +194,7 @@ final class BlockManager: ObservableObject {
 
             try await db
                 .from("blocks")
-                .upsert(blockToSave)
+                .upsert(blockToSave, onConflict: "user_id,date,block_index")
                 .execute()
 
             // Update local state immediately
