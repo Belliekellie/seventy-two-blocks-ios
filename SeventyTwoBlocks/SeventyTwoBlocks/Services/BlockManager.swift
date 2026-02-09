@@ -52,6 +52,11 @@ final class BlockManager: ObservableObject {
             for block in fetchedBlocks where block.label != nil {
                 print("📥   Block \(block.blockIndex): label='\(block.label ?? "nil")', category='\(block.category ?? "nil")'")
             }
+            // Debug: log blocks with segments to verify visualFill is loaded correctly
+            for block in fetchedBlocks where !block.segments.isEmpty {
+                let segmentSeconds = block.segments.reduce(0) { $0 + $1.seconds }
+                print("📥   Block \(block.blockIndex) has segments: \(block.segments.count) segs, \(segmentSeconds)s total, visualFill=\(String(format: "%.2f", block.visualFill)), status=\(block.status)")
+            }
 
             // Create a full array of 72 blocks, filling in missing ones
             var fullBlocks: [Block] = []
@@ -190,7 +195,8 @@ final class BlockManager: ObservableObject {
                 updatedAt: ISO8601DateFormatter().string(from: Date())
             )
 
-            print("📝 Saving block \(blockToSave.blockIndex): id='\(blockToSave.id)', label='\(blockToSave.label ?? "nil")', category='\(blockToSave.category ?? "nil")', status=\(blockToSave.status)")
+            let segmentSeconds = blockToSave.segments.reduce(0) { $0 + $1.seconds }
+            print("📝 Saving block \(blockToSave.blockIndex): id='\(blockToSave.id)', status=\(blockToSave.status), segments=\(blockToSave.segments.count) (\(segmentSeconds)s), visualFill=\(String(format: "%.2f", blockToSave.visualFill))")
 
             try await db
                 .from("blocks")
@@ -611,7 +617,8 @@ final class BlockManager: ObservableObject {
         updatedBlock.status = .done
         // Preserve category and label
 
-        print("✅ Auto-marking block \(block.blockIndex) as DONE")
+        let segmentSeconds = block.segments.reduce(0) { $0 + $1.seconds }
+        print("✅ Auto-marking block \(block.blockIndex) as DONE - segments: \(block.segments.count), \(segmentSeconds)s, visualFill=\(String(format: "%.2f", block.visualFill))")
         await saveBlock(updatedBlock)
     }
 
