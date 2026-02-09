@@ -32,9 +32,16 @@ struct BlockSegment: Codable, Identifiable {
     /// 2. Merging consecutive segments with the same type, category, and label
     /// This prevents micro-segments from pause/resume cluttering the time breakdown
     static func normalized(_ segments: [BlockSegment]) -> [BlockSegment] {
+        let inputTotal = segments.reduce(0) { $0 + $1.seconds }
+
         // Filter out zero/negative segments
         let filtered = segments.filter { $0.seconds > 0 }
-        guard !filtered.isEmpty else { return [] }
+        guard !filtered.isEmpty else {
+            if inputTotal > 0 {
+                print("⚠️ BlockSegment.normalized: input had \(inputTotal)s but all segments filtered out!")
+            }
+            return []
+        }
 
         var result: [BlockSegment] = []
 
@@ -52,6 +59,11 @@ struct BlockSegment: Codable, Identifiable {
                 // Different segment, add as new
                 result.append(segment)
             }
+        }
+
+        let outputTotal = result.reduce(0) { $0 + $1.seconds }
+        if outputTotal != inputTotal {
+            print("⚠️ BlockSegment.normalized: input=\(inputTotal)s, output=\(outputTotal)s - seconds mismatch!")
         }
 
         return result
