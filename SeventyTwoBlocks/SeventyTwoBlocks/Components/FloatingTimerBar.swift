@@ -253,6 +253,8 @@ struct FloatingTimerBar: View {
                     Button {
                         AudioManager.shared.triggerHapticFeedback(.medium)
                         timerManager.stopTimer(markComplete: false)
+                        NotificationManager.shared.cancelAllNotifications()
+                        WidgetDataProvider.shared.endLiveActivity()
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "stop.fill")

@@ -754,6 +754,9 @@ struct MainView: View {
 
     private func startWidgetLiveActivity(blockIndex: Int, isBreak: Bool, endAt: Date, category: String?, label: String?) {
         let categoryColor = blockManager.categories.first { $0.id == category }?.color
+        let timeUntilEnd = endAt.timeIntervalSinceNow
+        print("📱 Starting Live Activity: block \(blockIndex), endAt = \(endAt), timeUntilEnd = \(String(format: "%.0f", timeUntilEnd))s (\(timeUntilEnd > 0 ? "FUTURE ✓" : "PAST ⚠️"))")
+
         // Wrap in Task since startLiveActivity is now async
         // This ensures old activities are fully ended before new one starts (prevents duplicates)
         Task {
@@ -779,6 +782,8 @@ struct MainView: View {
         // NEVER start a timer on a future block
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let nextBlockIndex = actualCurrentBlock
+        let blockEndAt = Block.blockEndDate(for: nextBlockIndex)
+        print("📱 handleContinueWork: continuing to block \(nextBlockIndex), blockEndAt = \(blockEndAt), timeUntilEnd = \(String(format: "%.0f", blockEndAt.timeIntervalSinceNow))s")
         blocksWithTimerUsage.insert(nextBlockIndex)
 
         // GUARD: Don't restart if timer is already running on this block
