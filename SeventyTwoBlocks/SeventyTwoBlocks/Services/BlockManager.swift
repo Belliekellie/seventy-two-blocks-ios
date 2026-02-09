@@ -590,9 +590,6 @@ final class BlockManager: ObservableObject {
                 continue
             }
 
-            // Don't auto-skip blocks that had timer usage this session
-            guard !blocksWithTimerUsage.contains(block.blockIndex) else { continue }
-
             // Check if block has any actual usage (real work data, not just metadata)
             let hasSegments = !block.segments.isEmpty
             let hasUsedSeconds = block.usedSeconds > 0
@@ -603,10 +600,11 @@ final class BlockManager: ObservableObject {
             let hasRealUsage = hasSegments || hasUsedSeconds || hasRuns || hasSnapshot
 
             if hasRealUsage {
-                // Has actual usage data - mark as done
+                // Has actual usage data - mark as done (even if it had timer usage this session)
                 await markBlockDone(block)
-            } else {
-                // No real usage - skip it (preserve planned metadata like category/label)
+            } else if !blocksWithTimerUsage.contains(block.blockIndex) {
+                // No real usage AND wasn't used this session - skip it
+                // Don't auto-skip blocks that had timer usage (user might have stopped early intentionally)
                 await markBlockSkipped(block)
             }
         }
