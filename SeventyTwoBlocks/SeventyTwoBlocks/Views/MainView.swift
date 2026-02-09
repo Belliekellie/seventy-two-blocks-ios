@@ -667,6 +667,8 @@ struct MainView: View {
         updatedBlock.usedSeconds = totalUsedSeconds
         updatedBlock.progress = newProgress
         updatedBlock.breakProgress = newBreakProgress
+        // Save current visual fill so it persists correctly if app crashes or block is auto-marked done
+        updatedBlock.visualFill = timerManager.currentVisualFill
         // During break, don't overwrite the block's category/label with the
         // timer's stale work values — the block should keep whatever was set
         // when work was active. Only update during work mode.
@@ -679,7 +681,7 @@ struct MainView: View {
         updatedBlock.segments = BlockSegment.normalized(allSegments)
 
         await blockManager.saveBlock(updatedBlock)
-        print("💾 Saved snapshot for block \(blockIndex) - usedSeconds: \(totalUsedSeconds), progress: \(Int(newProgress))%")
+        print("💾 Saved snapshot for block \(blockIndex) - usedSeconds: \(totalUsedSeconds), progress: \(Int(newProgress))%, visualFill: \(String(format: "%.1f%%", timerManager.currentVisualFill * 100))")
     }
 
     /// When auto-continuing across a day boundary, flip the grid to the new day.
