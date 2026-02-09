@@ -146,14 +146,10 @@ final class WidgetDataProvider {
             // Use staleDate in the past to force immediate dismissal
             let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
 
-            // Await all activities ending before continuing
-            await withTaskGroup(of: Void.self) { group in
-                for activity in existingActivities {
-                    group.addTask {
-                        await activity.end(content, dismissalPolicy: .immediate)
-                        print("📱 Ended activity: \(activity.id)")
-                    }
-                }
+            // End all activities sequentially (typically only 1-2 at most)
+            for activity in existingActivities {
+                await activity.end(content, dismissalPolicy: .immediate)
+                print("📱 Ended activity: \(activity.id)")
             }
         }
         currentActivity = nil
