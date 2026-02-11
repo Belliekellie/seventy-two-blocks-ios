@@ -671,10 +671,11 @@ final class BlockManager: ObservableObject {
             await saveBlock(activatedBlock)
         }
 
-        // Special handling for night blocks: auto-skip previous unused ones
+        // Special handling for night blocks: auto-skip previous unused ones (today only)
         guard nightBlocksRange.contains(blockIndex) else { return }
 
         for otherBlock in blocks {
+            guard otherBlock.date == today else { continue }  // Today's blocks only
             guard nightBlocksRange.contains(otherBlock.blockIndex) else { continue }
             guard otherBlock.blockIndex < blockIndex else { continue }  // Only previous blocks
             guard otherBlock.isMuted else { continue }
