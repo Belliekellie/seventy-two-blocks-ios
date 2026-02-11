@@ -61,6 +61,12 @@ final class GoalManager: ObservableObject {
         saveMainGoal(goal, for: currentDate)
     }
 
+    func clearMainGoal(for date: Date) {
+        let dateString = formatDate(date)
+        mainGoal = nil
+        UserDefaults.standard.removeObject(forKey: "mainGoal_\(dateString)")
+    }
+
     private func saveMainGoal(_ goal: MainGoal, for dateString: String) {
         if let data = try? JSONEncoder().encode(goal) {
             UserDefaults.standard.set(data, forKey: "mainGoal_\(dateString)")

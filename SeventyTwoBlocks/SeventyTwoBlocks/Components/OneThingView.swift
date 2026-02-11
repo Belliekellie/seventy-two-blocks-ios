@@ -220,6 +220,9 @@ struct OneThingView: View {
         let trimmed = editText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             goalManager.setMainGoal(trimmed, for: selectedDate)
+        } else {
+            // User cleared the text - delete the goal
+            goalManager.clearMainGoal(for: selectedDate)
         }
         isEditing = false
         isFocused = false
