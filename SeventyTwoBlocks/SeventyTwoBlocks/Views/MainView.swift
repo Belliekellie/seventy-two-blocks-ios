@@ -856,8 +856,15 @@ struct MainView: View {
         let label = wasBreak ? "Break" : timerManager.currentLabel
 
         // Get existing segments from next block (in case it has data from earlier)
-        let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
-        let existingSegments = nextBlock?.segments ?? []
+        // BUT if we're crossing a day boundary, use empty segments (new day = fresh block)
+        let existingSegments: [BlockSegment]
+        if isToday {
+            let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
+            existingSegments = nextBlock?.segments ?? []
+        } else {
+            // Day boundary crossed - new day's block is fresh, no existing segments
+            existingSegments = []
+        }
 
         timerManager.continueToNextBlock(
             nextBlockIndex: nextBlockIndex,
@@ -878,6 +885,8 @@ struct MainView: View {
         )
 
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
+        // NOTE: flipToNextDayIfGridWrapped runs FIRST to ensure blocks are loaded for the correct day
+        // before activateBlockForTimer and saveBlockForContinue operate on them
         Task {
             await flipToNextDayIfGridWrapped(nextBlockIndex: nextBlockIndex)
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
@@ -1010,8 +1019,15 @@ struct MainView: View {
         let label = timerManager.lastWorkLabel ?? timerManager.currentLabel
 
         // Get existing segments from next block (in case it has data from earlier)
-        let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
-        let existingSegments = nextBlock?.segments ?? []
+        // BUT if we're crossing a day boundary, use empty segments (new day = fresh block)
+        let existingSegments: [BlockSegment]
+        if isToday {
+            let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
+            existingSegments = nextBlock?.segments ?? []
+        } else {
+            // Day boundary crossed - new day's block is fresh, no existing segments
+            existingSegments = []
+        }
 
         timerManager.continueToNextBlock(
             nextBlockIndex: nextBlockIndex,
@@ -1032,6 +1048,8 @@ struct MainView: View {
         )
 
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
+        // NOTE: flipToNextDayIfGridWrapped runs FIRST to ensure blocks are loaded for the correct day
+        // before activateBlockForTimer and saveBlockForContinue operate on them
         Task {
             await flipToNextDayIfGridWrapped(nextBlockIndex: nextBlockIndex)
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
