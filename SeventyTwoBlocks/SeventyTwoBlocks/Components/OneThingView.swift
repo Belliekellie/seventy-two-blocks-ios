@@ -99,29 +99,34 @@ struct OneThingView: View {
                             .focused($isFocused)
                             .onSubmit { saveGoal() }
 
-                        // Save button - saves and closes
-                        Button {
-                            saveGoal()
-                        } label: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.green)
+                        // Save button - only shows when there's text to save
+                        if !editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button {
+                                saveGoal()
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.green)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
 
                         Spacer()
 
-                        // X button - clears the text field
+                        // X button - aligned with + button above, clears text and exits
                         Button {
+                            isEditing = false
                             editText = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.secondary.opacity(0.6))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary.opacity(0.5))
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
                     } else {
                         Text("Set your main goal...")
                             .font(.body)
