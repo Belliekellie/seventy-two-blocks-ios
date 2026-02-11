@@ -98,6 +98,12 @@ struct OneThingView: View {
                             .font(.body)
                             .focused($isFocused)
                             .onSubmit { saveGoal() }
+                            .onChange(of: isFocused) { oldValue, newValue in
+                                // Tap outside - save and exit when focus is lost
+                                if oldValue && !newValue && isEditing {
+                                    saveGoal()
+                                }
+                            }
 
                         // Save button - only shows when there's text to save
                         if !editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -107,24 +113,19 @@ struct OneThingView: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.subheadline)
                                     .foregroundStyle(.green)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
 
                         Spacer()
 
-                        // X button - aligned with + button above, clears text and exits
+                        // X button - clears text (aligned with + button below)
                         Button {
-                            isEditing = false
                             editText = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary.opacity(0.5))
-                                .frame(minWidth: 44, minHeight: 44)
-                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     } else {
