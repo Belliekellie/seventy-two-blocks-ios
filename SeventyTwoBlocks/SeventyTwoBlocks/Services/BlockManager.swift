@@ -671,52 +671,37 @@ final class BlockManager: ObservableObject {
             await saveBlock(activatedBlock)
         }
 
-        // Special handling for night blocks
+        // Special handling for night blocks: auto-skip previous unused ones
         guard nightBlocksRange.contains(blockIndex) else { return }
 
-        // Auto-activate ALL remaining muted night blocks (user is clearly in work mode)
-        // and auto-skip previous unused ones
         for otherBlock in blocks {
             guard nightBlocksRange.contains(otherBlock.blockIndex) else { continue }
-            guard otherBlock.blockIndex != blockIndex else { continue }
+            guard otherBlock.blockIndex < blockIndex else { continue }  // Only previous blocks
             guard otherBlock.isMuted else { continue }
             guard otherBlock.status != .done && otherBlock.status != .skipped else { continue }
 
-            if otherBlock.blockIndex < blockIndex {
-                // Previous night block - check for usage
-                let hasUsage = !otherBlock.segments.isEmpty || otherBlock.usedSeconds > 0 || otherBlock.progress > 0
+            // Previous night block - check for usage
+            let hasUsage = !otherBlock.segments.isEmpty || otherBlock.usedSeconds > 0 || otherBlock.progress > 0
 
-                if hasUsage {
-                    // Has data - mark as done, not skipped
-                    if let localIdx = blocks.firstIndex(where: { $0.blockIndex == otherBlock.blockIndex }) {
-                        blocks[localIdx].status = .done
-                        blocks[localIdx].isMuted = false
-                        blocks[localIdx].isActivated = true
-                    }
-                    var doneBlock = otherBlock
-                    doneBlock.status = .done
-                    doneBlock.isMuted = false
-                    doneBlock.isActivated = true
-                    await saveBlock(doneBlock)
-                    print("🌙 Auto-marked night block \(otherBlock.blockIndex) as DONE (has data)")
-                } else {
-                    // No usage - skip it
-                    var skippedBlock = otherBlock
-                    skippedBlock.status = .skipped
-                    await saveBlock(skippedBlock)
-                    print("🌙 Auto-skipped unused night block \(otherBlock.blockIndex)")
-                }
-            } else {
-                // Future night block - activate it (remove moon) so user can freely use them
+            if hasUsage {
+                // Has data - mark as done, not skipped
                 if let localIdx = blocks.firstIndex(where: { $0.blockIndex == otherBlock.blockIndex }) {
+                    blocks[localIdx].status = .done
                     blocks[localIdx].isMuted = false
                     blocks[localIdx].isActivated = true
                 }
-                var activatedBlock = otherBlock
-                activatedBlock.isMuted = false
-                activatedBlock.isActivated = true
-                await saveBlock(activatedBlock)
-                print("🌙 Auto-activated future night block \(otherBlock.blockIndex)")
+                var doneBlock = otherBlock
+                doneBlock.status = .done
+                doneBlock.isMuted = false
+                doneBlock.isActivated = true
+                await saveBlock(doneBlock)
+                print("🌙 Auto-marked night block \(otherBlock.blockIndex) as DONE (has data)")
+            } else {
+                // No usage - skip it
+                var skippedBlock = otherBlock
+                skippedBlock.status = .skipped
+                await saveBlock(skippedBlock)
+                print("🌙 Auto-skipped unused night block \(otherBlock.blockIndex)")
             }
         }
     }
