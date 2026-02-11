@@ -1304,12 +1304,11 @@ struct MainView: View {
         let calendar = Calendar.current
         let now = Date()
 
-        // Parse the pending date
+        // Validate the pending date format and get current date string
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        guard let pendingDate = formatter.date(from: pendingDayStartDateString) else { return }
+        guard formatter.date(from: pendingDayStartDateString) != nil else { return }
 
-        // Get current date string for comparison
         let currentDateString = formatter.string(from: now)
         let currentHour = calendar.component(.hour, from: now)
 
