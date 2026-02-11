@@ -97,33 +97,31 @@ struct OneThingView: View {
                         TextField("What's your #1 goal today?", text: $editText)
                             .font(.body)
                             .focused($isFocused)
-                            .onSubmit {
-                                if hasChanges {
-                                    saveGoal()
-                                } else {
-                                    // No changes - just exit
-                                    isEditing = false
-                                    editText = ""
-                                }
-                            }
+                            .onSubmit { saveGoal() }
 
-                        // Save button - only when there are changes to save
-                        if hasChanges {
-                            Button {
-                                saveGoal()
-                            } label: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
+                        // Save button - saves and closes
+                        Button {
+                            saveGoal()
+                        } label: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.green)
                         }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
 
-                        // X button - always clears the text field (doesn't exit)
+                        Spacer()
+
+                        // X button - clears the text field
                         Button {
                             editText = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                                .font(.title3)
+                                .foregroundStyle(.secondary.opacity(0.6))
                         }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                     } else {
                         Text("Set your main goal...")
                             .font(.body)
