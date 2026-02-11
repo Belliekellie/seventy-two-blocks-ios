@@ -24,6 +24,8 @@ struct MainView: View {
     }
 
     @AppStorage("dayStartHour") private var dayStartHour = 6
+    @AppStorage("pendingDayStartHour") private var pendingDayStartHour: Int = -1
+    @AppStorage("pendingDayStartDateString") private var pendingDayStartDateString: String = ""
     @AppStorage("blocksUntilCheckIn") private var blocksUntilCheckIn = 3
 
     /// Returns the "logical today" Date, accounting for dayStartHour setting
@@ -561,6 +563,8 @@ struct MainView: View {
             // Check every 10 seconds for block changes to catch transitions faster
             // This ensures blocks get marked as done promptly after their time passes
             checkForBlockChange()
+            // Check if pending dayStartHour change should be applied
+            checkPendingDayStartHourChange()
         }
     }
 
@@ -1286,6 +1290,45 @@ struct MainView: View {
                 plannedBlock = block
                 showPlannedBlockDialog = true
             }
+        }
+    }
+
+    // MARK: - Pending Day Start Hour Change
+
+    /// Check if a pending dayStartHour change should be applied
+    /// This is called every 10 seconds by the periodic timer
+    private func checkPendingDayStartHourChange() {
+        // No pending change
+        guard pendingDayStartHour >= 0, !pendingDayStartDateString.isEmpty else { return }
+
+        let calendar = Calendar.current
+        let now = Date()
+
+        // Parse the pending date
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let pendingDate = formatter.date(from: pendingDayStartDateString) else { return }
+
+        // Get current date string for comparison
+        let currentDateString = formatter.string(from: now)
+        let currentHour = calendar.component(.hour, from: now)
+
+        // Check if we've reached or passed the pending date and hour
+        // The change takes effect when: current date >= pending date AND current hour >= pending hour
+        if currentDateString >= pendingDayStartDateString && currentHour >= pendingDayStartHour {
+            print("📅 Applying pending dayStartHour change: \(dayStartHour) → \(pendingDayStartHour)")
+
+            // Apply the change
+            dayStartHour = pendingDayStartHour
+
+            // Clear the pending values
+            pendingDayStartHour = -1
+            pendingDayStartDateString = ""
+
+            // The change in dayStartHour will cause logicalToday to recalculate
+            // which will cause isToday to potentially change
+            // which will trigger DayEndDialog or auto-switch as appropriate
+            // via the existing checkForBlockChange() logic
         }
     }
 }

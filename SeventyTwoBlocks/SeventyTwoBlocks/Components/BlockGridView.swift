@@ -28,26 +28,74 @@ struct DaySegment: Identifiable {
     let icon: String
     let startBlock: Int
     let endBlock: Int
-    let displayOffset: Int // For day-order block numbering
+    let dayStartBlock: Int // The block index where the user's day starts
 
-    static func segments(morning: String = "Morning", afternoon: String = "Afternoon & Evening", night: String = "Night") -> [DaySegment] {
+    /// Create segments dynamically based on dayStartHour
+    /// Each segment is 24 blocks (8 hours)
+    /// Morning: blocks 0-23 of the user's day (dayStartHour to dayStartHour+8)
+    /// Afternoon: blocks 24-47 of the user's day
+    /// Night: blocks 48-71 of the user's day (wraps into next calendar day for most settings)
+    static func segments(
+        dayStartHour: Int = 6,
+        morning: String = "Morning",
+        afternoon: String = "Afternoon & Evening",
+        night: String = "Night"
+    ) -> [DaySegment] {
+        // Convert dayStartHour to block index (3 blocks per hour)
+        let dayStartBlock = dayStartHour * 3
+
+        // Morning: first 24 blocks of user's day
+        let morningStart = dayStartBlock
+        let morningEnd = (dayStartBlock + 23) % 72
+
+        // Afternoon: next 24 blocks
+        let afternoonStart = (dayStartBlock + 24) % 72
+        let afternoonEnd = (dayStartBlock + 47) % 72
+
+        // Night: last 24 blocks (wraps to start of user's next day)
+        let nightStart = (dayStartBlock + 48) % 72
+        let nightEnd = (dayStartBlock + 71) % 72
+
         return [
-            DaySegment(id: "morning", label: morning, icon: "sun.max.fill", startBlock: 24, endBlock: 47, displayOffset: -23),
-            DaySegment(id: "afternoon", label: afternoon, icon: "sun.haze.fill", startBlock: 48, endBlock: 71, displayOffset: -23),
-            DaySegment(id: "sleep", label: night, icon: "moon.fill", startBlock: 0, endBlock: 23, displayOffset: 49)
+            DaySegment(id: "morning", label: morning, icon: "sun.max.fill",
+                       startBlock: morningStart, endBlock: morningEnd, dayStartBlock: dayStartBlock),
+            DaySegment(id: "afternoon", label: afternoon, icon: "sun.haze.fill",
+                       startBlock: afternoonStart, endBlock: afternoonEnd, dayStartBlock: dayStartBlock),
+            DaySegment(id: "sleep", label: night, icon: "moon.fill",
+                       startBlock: nightStart, endBlock: nightEnd, dayStartBlock: dayStartBlock)
         ]
     }
 
     static let defaultSegments = segments()
 
     /// Get display block number (1-72 in day order)
+    /// Block 1 is the first block of the user's day (at dayStartHour)
     func displayBlockNumber(_ blockIndex: Int) -> Int {
-        return blockIndex + displayOffset
+        // Calculate how many blocks from the day start
+        let blocksFromStart = (blockIndex - dayStartBlock + 72) % 72
+        return blocksFromStart + 1
     }
 
     /// Check if block index is in this segment
+    /// Handles wrap-around (e.g., night segment might go from block 66 to block 17)
     func contains(_ blockIndex: Int) -> Bool {
-        return blockIndex >= startBlock && blockIndex <= endBlock
+        if startBlock <= endBlock {
+            // No wrap-around
+            return blockIndex >= startBlock && blockIndex <= endBlock
+        } else {
+            // Wrap-around (e.g., startBlock=66, endBlock=17)
+            return blockIndex >= startBlock || blockIndex <= endBlock
+        }
+    }
+
+    /// Get all block indices in this segment (handles wrap-around)
+    var blockIndices: [Int] {
+        if startBlock <= endBlock {
+            return Array(startBlock...endBlock)
+        } else {
+            // Wrap-around
+            return Array(startBlock...71) + Array(0...endBlock)
+        }
     }
 }
 
@@ -82,7 +130,7 @@ struct BlockGridView: View {
     }
 
     private var segments: [DaySegment] {
-        DaySegment.segments(morning: segmentNameMorning, afternoon: segmentNameAfternoon, night: segmentNameNight)
+        DaySegment.segments(dayStartHour: dayStartHour, morning: segmentNameMorning, afternoon: segmentNameAfternoon, night: segmentNameNight)
     }
 
     private var currentBlockIndex: Int {
@@ -316,8 +364,10 @@ struct BlockGridView: View {
     }
 
     private func blocksForSegment(_ segment: DaySegment) -> [Block] {
-        let segmentBlocks = blocks.filter { $0.blockIndex >= segment.startBlock && $0.blockIndex <= segment.endBlock }
-        return segmentBlocks.sorted { $0.blockIndex < $1.blockIndex }
+        let segmentBlockIndices = Set(segment.blockIndices)
+        let segmentBlocks = blocks.filter { segmentBlockIndices.contains($0.blockIndex) }
+        // Sort by display order (position in the segment), not raw block index
+        return segmentBlocks.sorted { segment.displayBlockNumber($0.blockIndex) < segment.displayBlockNumber($1.blockIndex) }
     }
 }
 
@@ -379,7 +429,8 @@ struct SegmentSection: View {
             // Block grid (collapsible)
             if !isCollapsed {
                 LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(segment.startBlock...segment.endBlock, id: \.self) { blockIndex in
+                    // Use segment.blockIndices to handle wrap-around correctly
+                    ForEach(segment.blockIndices, id: \.self) { blockIndex in
                         let block = blocks.first { $0.blockIndex == blockIndex }
                         BlockItemView(
                             block: block,

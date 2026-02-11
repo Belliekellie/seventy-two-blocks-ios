@@ -282,18 +282,15 @@ extension Block {
         return totalMinutes / 20
     }
 
-    /// Display block number in day-order (1-72)
-    /// Morning (blockIndex 24-47) → display 1-24
-    /// Afternoon (blockIndex 48-71) → display 25-48
-    /// Night (blockIndex 0-23) → display 49-72
-    static func displayBlockNumber(_ index: Int) -> Int {
-        if index >= 24 {
-            // Morning (24-47) → 1-24, Afternoon (48-71) → 25-48
-            return index - 23
-        } else {
-            // Night (0-23) → 49-72
-            return index + 49
-        }
+    /// Display block number in day-order (1-72) based on dayStartHour
+    /// Block 1 is the first block of the user's day (at dayStartHour)
+    /// Block 72 is the last block of the user's day (just before dayStartHour)
+    static func displayBlockNumber(_ index: Int, dayStartHour: Int = 6) -> Int {
+        // Convert dayStartHour to block index (3 blocks per hour)
+        let dayStartBlock = dayStartHour * 3
+        // Calculate how many blocks from the day start (wrapping around midnight)
+        let blocksFromStart = (index - dayStartBlock + 72) % 72
+        return blocksFromStart + 1
     }
 
     /// Get remaining seconds in a block based on current time

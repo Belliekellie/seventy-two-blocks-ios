@@ -11,7 +11,11 @@ struct SettingsView: View {
 
     // Day Settings
     @AppStorage("dayStartHour") private var dayStartHour = 6
+    @AppStorage("pendingDayStartHour") private var pendingDayStartHour: Int = -1  // -1 means no pending change
+    @AppStorage("pendingDayStartDateString") private var pendingDayStartDateString: String = ""
     @AppStorage("autoActivateSleepBlocks") private var autoActivateSleepBlocks = true
+
+    @State private var showDayStartPreview = false
 
     // Timer Settings
     @AppStorage("disableAutoContinue") private var disableAutoContinue = false
@@ -72,14 +76,13 @@ struct SettingsView: View {
 
                 // Day Settings
                 Section {
-                    HStack(spacing: 8) {
-                        Text("🕐")
-                        Picker("Day starts at", selection: $dayStartHour) {
-                            ForEach(0..<9) { hour in
-                                Text("\(hour):00 AM").tag(hour)
-                            }
-                        }
-                    }
+                    // Day start hour picker with pending change logic
+                    DayStartHourPicker(
+                        dayStartHour: $dayStartHour,
+                        pendingDayStartHour: $pendingDayStartHour,
+                        pendingDayStartDateString: $pendingDayStartDateString,
+                        showPreview: $showDayStartPreview
+                    )
 
                     Toggle(isOn: $autoActivateSleepBlocks) {
                         HStack(spacing: 8) {
@@ -90,7 +93,11 @@ struct SettingsView: View {
                 } header: {
                     Text("Day Settings")
                 } footer: {
-                    Text("When enabled, sleep blocks stay inactive until manually activated.")
+                    if pendingDayStartHour >= 0 {
+                        Text("Change will take effect at \(pendingDayStartHour):00 AM on \(formattedPendingDate). Sleep blocks stay inactive until manually activated.")
+                    } else {
+                        Text("When enabled, sleep blocks stay inactive until manually activated.")
+                    }
                 }
 
                 // Timer Settings
@@ -302,6 +309,236 @@ struct SettingsView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showDayStartPreview) {
+                DayStartPreviewSheet(
+                    previewHour: pendingDayStartHour >= 0 ? pendingDayStartHour : dayStartHour
+                )
+            }
+        }
+    }
+
+    private var formattedPendingDate: String {
+        guard !pendingDayStartDateString.isEmpty else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: pendingDayStartDateString) else { return pendingDayStartDateString }
+        formatter.dateFormat = "MMMM d"
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Day Start Hour Picker
+
+struct DayStartHourPicker: View {
+    @Binding var dayStartHour: Int
+    @Binding var pendingDayStartHour: Int
+    @Binding var pendingDayStartDateString: String
+    @Binding var showPreview: Bool
+
+    @State private var selectedHour: Int = 6
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("🕐")
+                Picker("Day starts at", selection: $selectedHour) {
+                    ForEach(0..<9) { hour in
+                        Text("\(hour):00 AM").tag(hour)
+                    }
+                }
+                .onChange(of: selectedHour) { _, newValue in
+                    handleDayStartHourChange(to: newValue)
+                }
+            }
+
+            // Show pending change info
+            if pendingDayStartHour >= 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "clock.badge")
+                            .foregroundStyle(.orange)
+                        Text("Scheduled change to \(pendingDayStartHour):00 AM")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+
+                    HStack(spacing: 12) {
+                        Button {
+                            showPreview = true
+                        } label: {
+                            Label("Preview", systemImage: "eye")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(role: .destructive) {
+                            cancelPendingChange()
+                        } label: {
+                            Label("Cancel", systemImage: "xmark")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            // Initialize picker to current value (or pending if exists)
+            selectedHour = pendingDayStartHour >= 0 ? pendingDayStartHour : dayStartHour
+        }
+    }
+
+    private func handleDayStartHourChange(to newHour: Int) {
+        // If same as current (and no pending), do nothing
+        if newHour == dayStartHour && pendingDayStartHour < 0 {
+            return
+        }
+
+        // If same as current and there was a pending, cancel the pending
+        if newHour == dayStartHour && pendingDayStartHour >= 0 {
+            cancelPendingChange()
+            return
+        }
+
+        let calendar = Calendar.current
+        let currentHour = calendar.component(.hour, from: Date())
+
+        // Check if change can apply immediately
+        // Safe if: currentHour < min(oldDayStartHour, newDayStartHour)
+        let minHour = min(dayStartHour, newHour)
+
+        if currentHour < minHour {
+            // Safe - apply immediately
+            dayStartHour = newHour
+            pendingDayStartHour = -1
+            pendingDayStartDateString = ""
+        } else {
+            // Defer - set pending for next calendar day
+            pendingDayStartHour = newHour
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            pendingDayStartDateString = formatter.string(from: tomorrow)
+        }
+    }
+
+    private func cancelPendingChange() {
+        pendingDayStartHour = -1
+        pendingDayStartDateString = ""
+        selectedHour = dayStartHour
+    }
+}
+
+// MARK: - Day Start Preview Sheet
+
+struct DayStartPreviewSheet: View {
+    let previewHour: Int
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("With day starting at \(previewHour):00 AM:")
+                        .font(.headline)
+                        .padding(.horizontal)
+
+                    // Show the segment breakdown
+                    VStack(alignment: .leading, spacing: 12) {
+                        SegmentPreviewRow(
+                            icon: "sun.max.fill",
+                            iconColor: .orange,
+                            name: "Morning",
+                            timeRange: formatTimeRange(startHour: previewHour, hours: 8),
+                            blockRange: "1-24"
+                        )
+
+                        SegmentPreviewRow(
+                            icon: "sun.haze.fill",
+                            iconColor: .yellow,
+                            name: "Afternoon & Evening",
+                            timeRange: formatTimeRange(startHour: (previewHour + 8) % 24, hours: 8),
+                            blockRange: "25-48"
+                        )
+
+                        SegmentPreviewRow(
+                            icon: "moon.fill",
+                            iconColor: .indigo,
+                            name: "Night",
+                            timeRange: formatTimeRange(startHour: (previewHour + 16) % 24, hours: 8),
+                            blockRange: "49-72"
+                        )
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal)
+
+                    Text("Your day will flow from top to bottom, starting at \(previewHour):00 AM and ending at \(previewHour == 0 ? "11:59 PM" : "\(previewHour - 1):59 AM").")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
+                .padding(.vertical)
+            }
+            .navigationTitle("Layout Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func formatTimeRange(startHour: Int, hours: Int) -> String {
+        let endHour = (startHour + hours) % 24
+        return "\(formatHour(startHour)) - \(formatHour(endHour))"
+    }
+
+    private func formatHour(_ hour: Int) -> String {
+        if hour == 0 {
+            return "12:00 AM"
+        } else if hour < 12 {
+            return "\(hour):00 AM"
+        } else if hour == 12 {
+            return "12:00 PM"
+        } else {
+            return "\(hour - 12):00 PM"
+        }
+    }
+}
+
+struct SegmentPreviewRow: View {
+    let icon: String
+    let iconColor: Color
+    let name: String
+    let timeRange: String
+    let blockRange: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(iconColor)
+                .frame(width: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.subheadline.weight(.medium))
+                Text(timeRange)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text("Blocks \(blockRange)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
