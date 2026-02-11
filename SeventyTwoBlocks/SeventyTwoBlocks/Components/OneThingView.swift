@@ -97,40 +97,41 @@ struct OneThingView: View {
                         TextField("What's your #1 goal today?", text: $editText)
                             .font(.body)
                             .focused($isFocused)
-                            .onSubmit { saveGoal() }
+                            .onSubmit {
+                                if hasChanges {
+                                    saveGoal()
+                                } else {
+                                    // No changes - just exit
+                                    isEditing = false
+                                    editText = ""
+                                }
+                            }
 
+                        // Save button - only when there are changes to save
                         if hasChanges {
-                            // Changes made - show Save and Cancel
                             Button {
                                 saveGoal()
                             } label: {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(.green)
                             }
+                        }
 
-                            Button {
-                                // Cancel - revert to original and exit
-                                editText = originalText
-                                isEditing = false
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            // No changes yet - just show exit button
-                            Button {
-                                isEditing = false
-                                editText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
+                        // X button - always clears the text field (doesn't exit)
+                        Button {
+                            editText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
                         }
                     } else {
                         Text("Set your main goal...")
                             .font(.body)
                             .foregroundStyle(.secondary.opacity(0.6))
                             .onTapGesture {
+                                // Setting new goal - no original to compare against
+                                originalText = ""
+                                editText = ""
                                 isEditing = true
                                 isFocused = true
                             }
