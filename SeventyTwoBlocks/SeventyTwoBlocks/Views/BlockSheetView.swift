@@ -7,6 +7,7 @@ struct BlockSheetView: View {
     @EnvironmentObject var blockManager: BlockManager
     @EnvironmentObject var timerManager: TimerManager
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("dayStartHour") private var dayStartHour = 6
 
     @State private var category: String?
     @State private var label: String = ""
@@ -73,8 +74,6 @@ struct BlockSheetView: View {
     private var blockTime: String {
         "\(Block.blockToTime(block.blockIndex)) - \(Block.blockEndTime(block.blockIndex))"
     }
-
-    @AppStorage("dayStartHour") private var dayStartHour = 6
 
     /// Returns the "logical today" date string, accounting for dayStartHour setting
     private var todayString: String {
@@ -179,7 +178,7 @@ struct BlockSheetView: View {
                 // Block info section
                 Section {
                     HStack {
-                        Text("Block \(Block.displayBlockNumber(block.blockIndex))")
+                        Text("Block \(Block.displayBlockNumber(block.blockIndex, dayStartHour: dayStartHour))")
                             .font(.headline)
                         Spacer()
                         Text(blockTime)

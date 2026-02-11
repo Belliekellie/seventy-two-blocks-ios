@@ -110,7 +110,7 @@ struct LockScreenRectangularView: View {
     let entry: LockScreenEntry
 
     private var blockIndex: Int { entry.data.currentBlockIndex }
-    private var displayNumber: Int { BlockTimeUtils.displayBlockNumber(blockIndex) }
+    private var displayNumber: Int { BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: WidgetDataReader.readDayStartHour()) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {

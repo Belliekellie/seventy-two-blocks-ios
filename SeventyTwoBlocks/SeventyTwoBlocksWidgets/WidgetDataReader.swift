@@ -17,12 +17,18 @@ enum WidgetDataReader {
         }
 
         // Check if data is from a previous logical day (respects dayStartHour setting)
-        let dayStartHour = defaults.object(forKey: "dayStartHour") as? Int ?? 6
+        let dayStartHour = readDayStartHour()
         if isFromPreviousDay(widgetData.lastUpdated, dayStartHour: dayStartHour) {
             return .empty
         }
 
         return widgetData
+    }
+
+    /// Read the user's dayStartHour setting from App Group UserDefaults
+    static func readDayStartHour() -> Int {
+        let defaults = UserDefaults(suiteName: WidgetConstants.appGroupID)
+        return defaults?.object(forKey: "dayStartHour") as? Int ?? 6
     }
 
     /// Returns true if the given date belongs to a different logical day than now.

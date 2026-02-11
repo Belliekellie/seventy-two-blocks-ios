@@ -154,9 +154,12 @@ final class WidgetDataProvider {
         }
         currentActivity = nil
 
+        // Get dayStartHour for correct display number
+        let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
+
         let attributes = TimerActivityAttributes(
             blockIndex: blockIndex,
-            blockDisplayNumber: BlockTimeUtils.displayBlockNumber(blockIndex),
+            blockDisplayNumber: BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: dayStartHour),
             blockStartTime: BlockTimeUtils.blockToTime(blockIndex),
             blockEndTime: BlockTimeUtils.blockEndTime(blockIndex),
             isBreak: isBreak

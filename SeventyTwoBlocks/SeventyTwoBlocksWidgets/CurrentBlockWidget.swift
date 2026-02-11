@@ -102,7 +102,7 @@ struct SmallCurrentBlockView: View {
     let data: WidgetData
 
     private var blockIndex: Int { data.currentBlockIndex }
-    private var displayNumber: Int { BlockTimeUtils.displayBlockNumber(blockIndex) }
+    private var displayNumber: Int { BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: WidgetDataReader.readDayStartHour()) }
     private var categoryColor: Color { .fromHSL(currentCategoryColor) }
 
     private var currentCategoryColor: String? {
@@ -194,7 +194,7 @@ struct MediumCurrentBlockView: View {
     let data: WidgetData
 
     private var blockIndex: Int { data.currentBlockIndex }
-    private var displayNumber: Int { BlockTimeUtils.displayBlockNumber(blockIndex) }
+    private var displayNumber: Int { BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: WidgetDataReader.readDayStartHour()) }
     private var categoryColor: Color { .fromHSL(currentCategoryColor) }
 
     private var currentCategoryColor: String? {
