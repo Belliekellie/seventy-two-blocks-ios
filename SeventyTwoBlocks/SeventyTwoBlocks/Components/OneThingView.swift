@@ -8,6 +8,7 @@ struct OneThingView: View {
     @Binding var selectedDate: Date
     @State private var isEditing = false
     @State private var editText = ""
+    @State private var originalText = ""  // Track original to detect changes
     @AppStorage("actionsExpanded") private var actionsExpanded = true
     @State private var isAddingAction = false
     @State private var newActionText = ""
@@ -19,6 +20,11 @@ struct OneThingView: View {
 
     // Width of the checkbox area for consistent alignment
     private let checkboxWidth: CGFloat = 22
+
+    // Check if text has changed from original
+    private var hasChanges: Bool {
+        editText.trimmingCharacters(in: .whitespacesAndNewlines) != originalText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -40,6 +46,7 @@ struct OneThingView: View {
                 if let goal = goalManager.mainGoal, !goal.text.isEmpty, !isEditing {
                     Button {
                         editText = goal.text
+                        originalText = goal.text  // Track original for change detection
                         isEditing = true
                         isFocused = true
                     } label: {
@@ -73,6 +80,7 @@ struct OneThingView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             editText = goal.text
+                            originalText = goal.text  // Track original for change detection
                             isEditing = true
                             isFocused = true
                         }
@@ -91,19 +99,32 @@ struct OneThingView: View {
                             .focused($isFocused)
                             .onSubmit { saveGoal() }
 
-                        Button {
-                            saveGoal()
-                        } label: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        }
+                        if hasChanges {
+                            // Changes made - show Save and Cancel
+                            Button {
+                                saveGoal()
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
 
-                        Button {
-                            isEditing = false
-                            editText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                            Button {
+                                // Cancel - revert to original and exit
+                                editText = originalText
+                                isEditing = false
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            // No changes yet - just show exit button
+                            Button {
+                                isEditing = false
+                                editText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     } else {
                         Text("Set your main goal...")
