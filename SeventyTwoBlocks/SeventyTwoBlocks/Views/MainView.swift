@@ -1139,7 +1139,23 @@ struct MainView: View {
         if currentWallClockBlock == originalBlockIndex + 1 {
             // Only one block has passed
             if shouldSuppressAutoContinue {
-                handleStop()
+                // Check-in limit already reached - show check-in dialog with grace period
+                let checkInTriggeredAt = completedAt  // The original block completion triggered check-in
+                let gracePeriod: TimeInterval = 20 * 60  // 20 minutes
+                let timeSinceCheckIn = Date().timeIntervalSince(checkInTriggeredAt)
+
+                if timeSinceCheckIn >= gracePeriod {
+                    handleStop()
+                } else {
+                    // Show check-in dialog
+                    timerManager.showTimerComplete = true
+                    timerManager.timerCompletedAt = checkInTriggeredAt
+                    let graceEndAt = checkInTriggeredAt.addingTimeInterval(gracePeriod)
+                    WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                        autoContinueEndAt: graceEndAt,
+                        isBreak: isBreak
+                    )
+                }
             } else {
                 timerManager.incrementInteractionCounter()
                 handleContinueWork()
@@ -1184,13 +1200,38 @@ struct MainView: View {
         }
 
         // Now handle the current block
-        let totalAutoContinues = blocksAutoFilled + 1  // +1 for the current block we're about to start
         if timerManager.blocksSinceLastInteraction >= limit {
-            // Check-in limit reached - stop
-            print("📱 Check-in limit reached, stopping after \(blocksAutoFilled) retroactive fills")
-            handleStop()
+            // Check-in limit reached - give user a grace period before stopping
+            // Calculate when the check-in was triggered (when the last auto-filled block ended)
+            let lastFilledBlockIndex = originalBlockIndex + blocksAutoFilled
+            let checkInTriggeredAt = Block.blockEndDate(for: lastFilledBlockIndex)
+            let gracePeriod: TimeInterval = 20 * 60  // 20 minutes
+
+            let timeSinceCheckIn = Date().timeIntervalSince(checkInTriggeredAt)
+
+            if timeSinceCheckIn >= gracePeriod {
+                // Grace period has passed - stop
+                print("📱 Check-in grace period expired (\(Int(timeSinceCheckIn))s since check-in), stopping")
+                handleStop()
+            } else {
+                // Still in grace period - show check-in dialog
+                // User can click to continue, which resets the counter
+                print("📱 Check-in limit reached, showing dialog (grace: \(Int(gracePeriod - timeSinceCheckIn))s remaining)")
+
+                // Set up the completion dialog state (with suppressed auto-continue)
+                // The dialog will show without auto-continue countdown because shouldSuppressAutoContinue is true
+                timerManager.showTimerComplete = true
+                timerManager.timerCompletedAt = checkInTriggeredAt
+
+                // Update Live Activity to show the grace period countdown
+                let graceEndAt = checkInTriggeredAt.addingTimeInterval(gracePeriod)
+                WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                    autoContinueEndAt: graceEndAt,
+                    isBreak: isBreak
+                )
+            }
         } else {
-            // Start timer on current block
+            // Under limit - start timer on current block
             timerManager.incrementInteractionCounter()
             handleContinueWork()
             print("📱 Started timer on block \(currentWallClockBlock) after \(blocksAutoFilled) retroactive fills")
