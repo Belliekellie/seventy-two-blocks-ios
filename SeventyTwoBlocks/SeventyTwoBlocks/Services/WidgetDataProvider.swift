@@ -141,7 +141,11 @@ final class WidgetDataProvider {
                 progress: 1.0,
                 isBreak: false,
                 isAutoContinue: false,
-                autoContinueEndAt: nil
+                autoContinueEndAt: nil,
+                nextBlockIndex: nil,
+                nextBlockDisplayNumber: nil,
+                nextBlockTimerEndAt: nil,
+                nextBlockAutoContinueEndAt: nil
             )
             // Use staleDate in the past to force immediate dismissal
             let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
@@ -172,6 +176,11 @@ final class WidgetDataProvider {
         let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
         let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
 
+        // Calculate next block info so Live Activity can continue after auto-continue
+        let nextBlockIndex = blockIndex + 1
+        let nextBlockTimerEndAt = nextBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: nextBlockIndex) : nil
+        let nextBlockAutoContinueEndAt = nextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -181,11 +190,16 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: autoContinueEndAt
+            autoContinueEndAt: autoContinueEndAt,
+            nextBlockIndex: nextBlockIndex < 72 ? nextBlockIndex : nil,
+            nextBlockDisplayNumber: nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil,
+            nextBlockTimerEndAt: nextBlockTimerEndAt,
+            nextBlockAutoContinueEndAt: nextBlockAutoContinueEndAt
         )
 
-        // Stale date is well after the timer should end
-        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(120))
+        // Stale date extends to cover next block's auto-continue too
+        let staleDate = nextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
+        let content = ActivityContent(state: state, staleDate: staleDate)
 
         do {
             let activity = try Activity.request(
@@ -221,7 +235,11 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: nil
+            autoContinueEndAt: nil,
+            nextBlockIndex: nil,
+            nextBlockDisplayNumber: nil,
+            nextBlockTimerEndAt: nil,
+            nextBlockAutoContinueEndAt: nil
         )
 
         let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(120))
@@ -246,7 +264,11 @@ final class WidgetDataProvider {
             progress: 1.0,
             isBreak: isBreak,
             isAutoContinue: true,
-            autoContinueEndAt: autoContinueEndAt
+            autoContinueEndAt: autoContinueEndAt,
+            nextBlockIndex: nil,
+            nextBlockDisplayNumber: nil,
+            nextBlockTimerEndAt: nil,
+            nextBlockAutoContinueEndAt: nil
         )
 
         let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
@@ -269,7 +291,11 @@ final class WidgetDataProvider {
                 progress: 1.0,
                 isBreak: false,
                 isAutoContinue: false,
-                autoContinueEndAt: nil
+                autoContinueEndAt: nil,
+                nextBlockIndex: nil,
+                nextBlockDisplayNumber: nil,
+                nextBlockTimerEndAt: nil,
+                nextBlockAutoContinueEndAt: nil
             )
             let content = ActivityContent(state: finalState, staleDate: nil)
 

@@ -1202,6 +1202,12 @@ struct MainView: View {
             }
         }
 
+        // Reload blocks to update UI before handling current block
+        // This prevents the flash of incomplete blocks
+        if blocksAutoFilled > 0 {
+            await blockManager.reloadBlocks()
+        }
+
         // Now handle the current block
         if timerManager.blocksSinceLastInteraction >= limit {
             // Check-in limit reached - give user a grace period before stopping
