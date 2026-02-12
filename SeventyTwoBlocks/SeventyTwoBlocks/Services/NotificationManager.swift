@@ -78,6 +78,35 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Schedule an immediate check-in notification with grace period info
+    /// Used when the check-in limit is reached during retroactive auto-continue processing
+    func scheduleCheckInNotification(blockIndex: Int, graceMinutesRemaining: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Still working?"
+        content.body = "You have \(graceMinutesRemaining) minutes to continue or your session will end. Tap to check in."
+        content.sound = .default
+        content.badge = 1
+        content.categoryIdentifier = "TIMER_COMPLETE"
+        content.interruptionLevel = .timeSensitive
+
+        // Fire immediately (1 second delay minimum required)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+
+        let request = UNNotificationRequest(
+            identifier: "check_in_\(blockIndex)",
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("Failed to schedule check-in notification: \(error)")
+            } else {
+                print("📲 Scheduled check-in notification for block \(blockIndex) with \(graceMinutesRemaining) min grace")
+            }
+        }
+    }
+
     func scheduleBreakReminder(at date: Date, blockIndex: Int) {
         let content = UNMutableNotificationContent()
         content.title = "Break Time?"

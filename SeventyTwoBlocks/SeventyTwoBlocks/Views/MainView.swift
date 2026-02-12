@@ -1147,7 +1147,14 @@ struct MainView: View {
                 if timeSinceCheckIn >= gracePeriod {
                     handleStop()
                 } else {
-                    // Show check-in dialog
+                    // Send notification and show check-in dialog
+                    let graceMinutesRemaining = Int((gracePeriod - timeSinceCheckIn) / 60)
+
+                    NotificationManager.shared.scheduleCheckInNotification(
+                        blockIndex: currentWallClockBlock,
+                        graceMinutesRemaining: max(1, graceMinutesRemaining)
+                    )
+
                     timerManager.showTimerComplete = true
                     timerManager.timerCompletedAt = checkInTriggeredAt
                     let graceEndAt = checkInTriggeredAt.addingTimeInterval(gracePeriod)
@@ -1214,11 +1221,17 @@ struct MainView: View {
                 print("📱 Check-in grace period expired (\(Int(timeSinceCheckIn))s since check-in), stopping")
                 handleStop()
             } else {
-                // Still in grace period - show check-in dialog
-                // User can click to continue, which resets the counter
-                print("📱 Check-in limit reached, showing dialog (grace: \(Int(gracePeriod - timeSinceCheckIn))s remaining)")
+                // Still in grace period - send notification and show dialog
+                let graceMinutesRemaining = Int((gracePeriod - timeSinceCheckIn) / 60)
+                print("📱 Check-in limit reached, \(graceMinutesRemaining) min grace remaining")
 
-                // Set up the completion dialog state (with suppressed auto-continue)
+                // Send immediate notification so user can respond without opening app
+                NotificationManager.shared.scheduleCheckInNotification(
+                    blockIndex: currentWallClockBlock,
+                    graceMinutesRemaining: max(1, graceMinutesRemaining)
+                )
+
+                // Also set up the completion dialog state (shown if they open the app)
                 // The dialog will show without auto-continue countdown because shouldSuppressAutoContinue is true
                 timerManager.showTimerComplete = true
                 timerManager.timerCompletedAt = checkInTriggeredAt
