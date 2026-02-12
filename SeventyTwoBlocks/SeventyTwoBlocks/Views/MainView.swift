@@ -1132,9 +1132,6 @@ struct MainView: View {
         // The original block already completed and was saved by handleTimerComplete.
         // Now we need to fill any intermediate blocks that would have auto-continued.
 
-        // Calculate when the first auto-continue would have fired
-        let firstAutoContinueAt = completedAt.addingTimeInterval(autoContinueDelay)
-
         // If we're still on the same block, just do a simple auto-continue
         if currentWallClockBlock == originalBlockIndex + 1 {
             // Only one block has passed
