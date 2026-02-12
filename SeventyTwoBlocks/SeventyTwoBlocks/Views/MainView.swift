@@ -628,14 +628,14 @@ struct MainView: View {
                 )
             } else if timerManager.showTimerComplete || timerManager.showBreakComplete {
                 // Timer completed - update Live Activity to show auto-continue countdown
+                // Use Date() + countdown to ensure Live Activity gets a FUTURE date
+                // (SwiftUI's .timer style counts UP for past dates, DOWN for future dates)
                 let autoContinueSeconds: TimeInterval = timerManager.showBreakComplete ? 30 : 25
-                if let completedAt = timerManager.timerCompletedAt {
-                    let autoContinueEndAt = completedAt.addingTimeInterval(autoContinueSeconds)
-                    WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                        autoContinueEndAt: autoContinueEndAt,
-                        isBreak: timerManager.showBreakComplete
-                    )
-                }
+                let autoContinueEndAt = Date().addingTimeInterval(autoContinueSeconds)
+                WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                    autoContinueEndAt: autoContinueEndAt,
+                    isBreak: timerManager.showBreakComplete
+                )
             }
         }
 

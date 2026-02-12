@@ -16,13 +16,15 @@ struct QuickActionsView: View {
         Block.getCurrentBlockIndex()
     }
 
-    // Night/sleep blocks are blocks 0-23 (midnight to 8am)
-    private var nightBlocksRange: ClosedRange<Int> {
-        0...23
+    // Night/sleep blocks are blocks BEFORE the user's day start hour
+    @AppStorage("dayStartHour") private var dayStartHour: Int = 6
+
+    private var dayStartBlockIndex: Int {
+        dayStartHour * 3  // 3 blocks per hour
     }
 
     private var nightBlocks: [Block] {
-        blockManager.blocks.filter { nightBlocksRange.contains($0.blockIndex) }
+        blockManager.blocks.filter { $0.blockIndex < dayStartBlockIndex }
     }
 
     // Check if night blocks are currently activated (unmuted)

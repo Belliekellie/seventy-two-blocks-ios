@@ -631,8 +631,23 @@ final class BlockManager: ObservableObject {
 
     // MARK: - Block Activation
 
-    /// Night blocks range (midnight to 8am)
-    private var nightBlocksRange: ClosedRange<Int> { 0...23 }
+    /// Night blocks - blocks BEFORE the user's day start hour
+    /// e.g., dayStartHour=7 → night blocks are 0-20 (midnight to 6:40am)
+    /// e.g., dayStartHour=6 → night blocks are 0-17 (midnight to 5:40am)
+    private var dayStartBlockIndex: Int {
+        let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
+        return dayStartHour * 3  // 3 blocks per hour
+    }
+
+    private func isNightBlock(_ blockIndex: Int) -> Bool {
+        return blockIndex < dayStartBlockIndex
+    }
+
+    // Keep nightBlocksRange for backwards compatibility, but it now uses dayStartHour
+    private var nightBlocksRange: ClosedRange<Int> {
+        let endIndex = max(0, dayStartBlockIndex - 1)
+        return 0...endIndex
+    }
 
     /// Called when continuing/starting a timer on a block - handles muted block activation
     /// This will:
@@ -748,12 +763,19 @@ final class BlockManager: ObservableObject {
     }
 
     private func createEmptyBlock(index: Int, date: String) -> Block {
-        Block(
+        // Check if this is a night block (before dayStartHour) and if sleep blocks should be locked
+        // The setting is confusingly named "autoActivateSleepBlocks" but the UI says "Keep sleep blocks locked"
+        // When toggle is ON (true), sleep blocks should be muted (locked)
+        // Default is true (keep locked)
+        let keepSleepBlocksLocked = UserDefaults.standard.object(forKey: "autoActivateSleepBlocks") as? Bool ?? true
+        let shouldMute = isNightBlock(index) && keepSleepBlocksLocked
+
+        return Block(
             id: UUID().uuidString,
             userId: "",
             date: date,
             blockIndex: index,
-            isMuted: false,
+            isMuted: shouldMute,
             isActivated: false,
             category: nil,
             label: nil,
