@@ -490,36 +490,52 @@ struct MainView: View {
                 }
             } else {
                 // 6b. No notification action — user just opened the app.
-                //     ALWAYS reset the countdown to start fresh from NOW.
-                //     The original timerCompletedAt is when the block ended, but if the user
-                //     was away, the auto-continue countdown (25s) might already be in the past,
-                //     causing the Live Activity timer to count UP instead of down.
-                if timerManager.showTimerComplete {
-                    if shouldSuppressAutoContinue {
-                        // Check-in mode — show grace period countdown (20 min from now)
-                        timerManager.timerCompletedAt = Date()
-                        let graceEndAt = Date().addingTimeInterval(1200)
-                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                            autoContinueEndAt: graceEndAt,
-                            isBreak: false
-                        )
+                //     Check if auto-continue should have already fired while backgrounded.
+                if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
+                    let timeSinceCompletion = Date().timeIntervalSince(completedAt)
+                    let autoContinueSeconds: TimeInterval = 25
+
+                    if timeSinceCompletion >= autoContinueSeconds {
+                        // Auto-continue period has passed — should have auto-continued while backgrounded
+                        if shouldSuppressAutoContinue {
+                            // Check-in limit reached — stop instead
+                            handleStop()
+                        } else {
+                            // Auto-continue to next block (as if the 25s countdown finished)
+                            timerManager.incrementInteractionCounter()
+                            handleContinueWork()
+                        }
                     } else {
-                        // Normal mode — reset countdown to fresh 25s from NOW
-                        timerManager.timerCompletedAt = Date()
-                        let newAutoContinueEndAt = Date().addingTimeInterval(25)
+                        // Still within auto-continue period — show dialog with REMAINING time
+                        // Don't reset timerCompletedAt, let the dialog count down from original time
+                        let remainingTime = autoContinueSeconds - timeSinceCompletion
+                        let autoContinueEndAt = Date().addingTimeInterval(remainingTime)
                         WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                            autoContinueEndAt: newAutoContinueEndAt,
+                            autoContinueEndAt: autoContinueEndAt,
                             isBreak: false
                         )
                     }
-                } else if timerManager.showBreakComplete {
-                    // Reset break countdown to fresh 30s from NOW
-                    timerManager.timerCompletedAt = Date()
-                    let newAutoContinueEndAt = Date().addingTimeInterval(30)
-                    WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                        autoContinueEndAt: newAutoContinueEndAt,
-                        isBreak: true
-                    )
+                } else if timerManager.showBreakComplete, let completedAt = timerManager.timerCompletedAt {
+                    let timeSinceCompletion = Date().timeIntervalSince(completedAt)
+                    let autoContinueSeconds: TimeInterval = 30
+
+                    if timeSinceCompletion >= autoContinueSeconds {
+                        // Break auto-continue period has passed
+                        if shouldSuppressAutoContinue {
+                            handleStop()
+                        } else {
+                            timerManager.incrementInteractionCounter()
+                            handleContinueWork()
+                        }
+                    } else {
+                        // Still within break auto-continue period
+                        let remainingTime = autoContinueSeconds - timeSinceCompletion
+                        let autoContinueEndAt = Date().addingTimeInterval(remainingTime)
+                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                            autoContinueEndAt: autoContinueEndAt,
+                            isBreak: true
+                        )
+                    }
                 }
             }
 

@@ -165,9 +165,13 @@ final class WidgetDataProvider {
             isBreak: isBreak
         )
 
-        // Don't pre-set autoContinueEndAt - only set it when timer actually completes
-        // Pre-setting it caused issues where the Live Activity would show "Block Complete"
-        // if there was any timing glitch at startup
+        // Pre-set autoContinueEndAt so the Live Activity can automatically transition
+        // to showing the auto-continue countdown when the block timer expires,
+        // even when the app is backgrounded. The widget checks (timerExpired && autoContinueEndAt != nil)
+        // before showing auto-continue UI, so this won't cause premature display.
+        let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
+        let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
+
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -177,7 +181,7 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: nil  // Only set when timer completes via updateLiveActivityForAutoContinue
+            autoContinueEndAt: autoContinueEndAt
         )
 
         // Stale date is well after the timer should end
