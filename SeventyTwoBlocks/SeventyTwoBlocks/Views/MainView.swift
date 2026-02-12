@@ -1127,7 +1127,6 @@ struct MainView: View {
         }
 
         let currentWallClockBlock = Block.getCurrentBlockIndex()
-        let blockDuration: TimeInterval = 20 * 60  // 1200 seconds
 
         // The original block already completed and was saved by handleTimerComplete.
         // Now we need to fill any intermediate blocks that would have auto-continued.
