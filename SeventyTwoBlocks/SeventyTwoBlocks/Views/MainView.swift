@@ -488,43 +488,36 @@ struct MainView: View {
                 }
             } else {
                 // 6b. No notification action — user just opened the app.
-                //     If they've been away a while (> 30s), show a FRESH dialog
-                //     so they can consciously choose what to do.
-                //     Don't auto-fill blocks — they might not have been working.
-                if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
-                    let elapsed = Date().timeIntervalSince(completedAt)
+                //     ALWAYS reset the countdown to start fresh from NOW.
+                //     The original timerCompletedAt is when the block ended, but if the user
+                //     was away, the auto-continue countdown (25s) might already be in the past,
+                //     causing the Live Activity timer to count UP instead of down.
+                if timerManager.showTimerComplete {
                     if shouldSuppressAutoContinue {
-                        // Check-in mode — don't reset timerCompletedAt.
-                        // The dialog's 20-min grace period countdown uses the original
-                        // completion time and will handle auto-stop if it expires.
-                        // But update Live Activity to show grace period instead of stale auto-continue
-                        let graceEndAt = completedAt.addingTimeInterval(1200)
+                        // Check-in mode — show grace period countdown (20 min from now)
+                        timerManager.timerCompletedAt = Date()
+                        let graceEndAt = Date().addingTimeInterval(1200)
                         WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
                             autoContinueEndAt: graceEndAt,
                             isBreak: false
                         )
-                    } else if elapsed > 30 {
-                        // Reset to now so the dialog shows a fresh 25s countdown
+                    } else {
+                        // Normal mode — reset countdown to fresh 25s from NOW
                         timerManager.timerCompletedAt = Date()
-                        // Update Live Activity with fresh auto-continue countdown
                         let newAutoContinueEndAt = Date().addingTimeInterval(25)
                         WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
                             autoContinueEndAt: newAutoContinueEndAt,
                             isBreak: false
                         )
                     }
-                    // If <= 30s, the dialog's existing countdown handles it naturally
-                } else if timerManager.showBreakComplete, let completedAt = timerManager.timerCompletedAt {
-                    let elapsed = Date().timeIntervalSince(completedAt)
-                    if elapsed > 35 {
-                        timerManager.timerCompletedAt = Date()
-                        // Update Live Activity with fresh auto-continue countdown
-                        let newAutoContinueEndAt = Date().addingTimeInterval(30)
-                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                            autoContinueEndAt: newAutoContinueEndAt,
-                            isBreak: true
-                        )
-                    }
+                } else if timerManager.showBreakComplete {
+                    // Reset break countdown to fresh 30s from NOW
+                    timerManager.timerCompletedAt = Date()
+                    let newAutoContinueEndAt = Date().addingTimeInterval(30)
+                    WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                        autoContinueEndAt: newAutoContinueEndAt,
+                        isBreak: true
+                    )
                 }
             }
 
