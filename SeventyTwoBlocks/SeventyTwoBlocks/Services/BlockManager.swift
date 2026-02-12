@@ -649,6 +649,84 @@ final class BlockManager: ObservableObject {
         return 0...endIndex
     }
 
+    /// Ensure night blocks have correct muted state based on current dayStartHour
+    /// Called on app launch to fix any inconsistencies from past dayStartHour changes
+    func ensureNightBlockConsistency() async {
+        let keepSleepBlocksLocked = UserDefaults.standard.object(forKey: "autoActivateSleepBlocks") as? Bool ?? true
+        guard keepSleepBlocksLocked else { return }
+
+        let today = formatDate(Date())
+        guard currentDate == today else { return }
+
+        for block in blocks {
+            guard block.date == today else { continue }
+
+            let shouldBeNightBlock = isNightBlock(block.blockIndex)
+
+            // Skip blocks with data - don't change their muted state
+            let hasData = !block.segments.isEmpty || block.usedSeconds > 0 || block.progress > 0
+            if hasData || block.status == .done { continue }
+
+            if shouldBeNightBlock && !block.isMuted {
+                // Block should be muted but isn't
+                var updatedBlock = block
+                updatedBlock.isMuted = true
+                updatedBlock.isActivated = false
+                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex }) {
+                    blocks[localIdx] = updatedBlock
+                }
+                await saveBlock(updatedBlock)
+                print("🌙 Fixed: Muted block \(block.blockIndex) - should be a night block")
+            }
+        }
+    }
+
+    /// Update night block muted states when dayStartHour changes
+    /// Blocks that are now night blocks (and have no data) get muted
+    /// Blocks that are no longer night blocks get unmuted
+    func updateNightBlocksForDayStartHour(oldDayStartHour: Int, newDayStartHour: Int) async {
+        let keepSleepBlocksLocked = UserDefaults.standard.object(forKey: "autoActivateSleepBlocks") as? Bool ?? true
+        guard keepSleepBlocksLocked else { return }  // Only update if setting is on
+
+        let oldDayStartBlockIndex = oldDayStartHour * 3
+        let newDayStartBlockIndex = newDayStartHour * 3
+
+        let today = formatDate(Date())
+        guard currentDate == today else { return }
+
+        for block in blocks {
+            guard block.date == today else { continue }
+
+            let wasNightBlock = block.blockIndex < oldDayStartBlockIndex
+            let isNowNightBlock = block.blockIndex < newDayStartBlockIndex
+
+            // Skip blocks with data - don't change their muted state
+            let hasData = !block.segments.isEmpty || block.usedSeconds > 0 || block.progress > 0
+            if hasData || block.status == .done { continue }
+
+            if !wasNightBlock && isNowNightBlock && !block.isMuted {
+                // Block is NOW a night block but wasn't before - mute it
+                var updatedBlock = block
+                updatedBlock.isMuted = true
+                updatedBlock.isActivated = false
+                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex }) {
+                    blocks[localIdx] = updatedBlock
+                }
+                await saveBlock(updatedBlock)
+                print("🌙 Muted block \(block.blockIndex) - now a night block")
+            } else if wasNightBlock && !isNowNightBlock && block.isMuted {
+                // Block WAS a night block but isn't anymore - unmute it
+                var updatedBlock = block
+                updatedBlock.isMuted = false
+                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex }) {
+                    blocks[localIdx] = updatedBlock
+                }
+                await saveBlock(updatedBlock)
+                print("☀️ Unmuted block \(block.blockIndex) - no longer a night block")
+            }
+        }
+    }
+
     /// Called when continuing/starting a timer on a block - handles muted block activation
     /// This will:
     /// 1. Unmute and activate the block being started (any muted block)

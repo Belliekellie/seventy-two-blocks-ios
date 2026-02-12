@@ -393,6 +393,8 @@ struct MainView: View {
             // Run auto-skip on initial load for today
             if isToday {
                 await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                // Ensure night blocks have correct muted state (fixes inconsistencies from past dayStartHour changes)
+                await blockManager.ensureNightBlockConsistency()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -1310,12 +1312,19 @@ struct MainView: View {
         if currentDateString >= pendingDayStartDateString && currentHour >= pendingDayStartHour {
             print("📅 Applying pending dayStartHour change: \(dayStartHour) → \(pendingDayStartHour)")
 
+            let oldHour = dayStartHour
+
             // Apply the change
             dayStartHour = pendingDayStartHour
 
             // Clear the pending values
             pendingDayStartHour = -1
             pendingDayStartDateString = ""
+
+            // Update night block muted states based on new dayStartHour
+            Task {
+                await blockManager.updateNightBlocksForDayStartHour(oldDayStartHour: oldHour, newDayStartHour: dayStartHour)
+            }
 
             // The change in dayStartHour will cause logicalToday to recalculate
             // which will cause isToday to potentially change
