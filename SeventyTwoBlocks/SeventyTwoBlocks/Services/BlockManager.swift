@@ -658,6 +658,9 @@ final class BlockManager: ObservableObject {
         let today = formatDate(Date())
         guard currentDate == today else { return }
 
+        // Collect blocks that need updating (don't modify while iterating)
+        var blocksToMute: [Block] = []
+
         for block in blocks {
             guard block.date == today else { continue }
 
@@ -668,16 +671,20 @@ final class BlockManager: ObservableObject {
             if hasData || block.status == .done { continue }
 
             if shouldBeNightBlock && !block.isMuted {
-                // Block should be muted but isn't
                 var updatedBlock = block
                 updatedBlock.isMuted = true
                 updatedBlock.isActivated = false
-                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex }) {
-                    blocks[localIdx] = updatedBlock
-                }
-                await saveBlock(updatedBlock)
-                print("🌙 Fixed: Muted block \(block.blockIndex) - should be a night block")
+                blocksToMute.append(updatedBlock)
             }
+        }
+
+        // Apply updates after iteration
+        for updatedBlock in blocksToMute {
+            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == updatedBlock.blockIndex }) {
+                blocks[localIdx] = updatedBlock
+            }
+            await saveBlock(updatedBlock)
+            print("🌙 Fixed: Muted block \(updatedBlock.blockIndex) - should be a night block")
         }
     }
 
@@ -694,6 +701,9 @@ final class BlockManager: ObservableObject {
         let today = formatDate(Date())
         guard currentDate == today else { return }
 
+        // Collect blocks that need updating (don't modify while iterating)
+        var blocksToUpdate: [(block: Block, shouldMute: Bool)] = []
+
         for block in blocks {
             guard block.date == today else { continue }
 
@@ -709,20 +719,25 @@ final class BlockManager: ObservableObject {
                 var updatedBlock = block
                 updatedBlock.isMuted = true
                 updatedBlock.isActivated = false
-                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex }) {
-                    blocks[localIdx] = updatedBlock
-                }
-                await saveBlock(updatedBlock)
-                print("🌙 Muted block \(block.blockIndex) - now a night block")
+                blocksToUpdate.append((updatedBlock, true))
             } else if wasNightBlock && !isNowNightBlock && block.isMuted {
                 // Block WAS a night block but isn't anymore - unmute it
                 var updatedBlock = block
                 updatedBlock.isMuted = false
-                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex }) {
-                    blocks[localIdx] = updatedBlock
-                }
-                await saveBlock(updatedBlock)
-                print("☀️ Unmuted block \(block.blockIndex) - no longer a night block")
+                blocksToUpdate.append((updatedBlock, false))
+            }
+        }
+
+        // Apply updates after iteration
+        for (updatedBlock, shouldMute) in blocksToUpdate {
+            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == updatedBlock.blockIndex }) {
+                blocks[localIdx] = updatedBlock
+            }
+            await saveBlock(updatedBlock)
+            if shouldMute {
+                print("🌙 Muted block \(updatedBlock.blockIndex) - now a night block")
+            } else {
+                print("☀️ Unmuted block \(updatedBlock.blockIndex) - no longer a night block")
             }
         }
     }
