@@ -491,23 +491,22 @@ struct MainView: View {
             } else {
                 // 6b. No notification action — user just opened the app.
                 //     Check if auto-continue should have already fired while backgrounded.
+                //     If multiple blocks have passed, retroactively fill them.
                 if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
                     let timeSinceCompletion = Date().timeIntervalSince(completedAt)
                     let autoContinueSeconds: TimeInterval = 25
 
                     if timeSinceCompletion >= autoContinueSeconds {
-                        // Auto-continue period has passed — should have auto-continued while backgrounded
-                        if shouldSuppressAutoContinue {
-                            // Check-in limit reached — stop instead
-                            handleStop()
-                        } else {
-                            // Auto-continue to next block (as if the 25s countdown finished)
-                            timerManager.incrementInteractionCounter()
-                            handleContinueWork()
+                        // Auto-continue period has passed — process retroactive auto-continues
+                        Task {
+                            await processRetroactiveAutoContinues(
+                                completedAt: completedAt,
+                                autoContinueDelay: autoContinueSeconds,
+                                isBreak: false
+                            )
                         }
                     } else {
                         // Still within auto-continue period — show dialog with REMAINING time
-                        // Don't reset timerCompletedAt, let the dialog count down from original time
                         let remainingTime = autoContinueSeconds - timeSinceCompletion
                         let autoContinueEndAt = Date().addingTimeInterval(remainingTime)
                         WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
@@ -520,12 +519,13 @@ struct MainView: View {
                     let autoContinueSeconds: TimeInterval = 30
 
                     if timeSinceCompletion >= autoContinueSeconds {
-                        // Break auto-continue period has passed
-                        if shouldSuppressAutoContinue {
-                            handleStop()
-                        } else {
-                            timerManager.incrementInteractionCounter()
-                            handleContinueWork()
+                        // Break auto-continue period has passed — process retroactive auto-continues
+                        Task {
+                            await processRetroactiveAutoContinues(
+                                completedAt: completedAt,
+                                autoContinueDelay: autoContinueSeconds,
+                                isBreak: true
+                            )
                         }
                     } else {
                         // Still within break auto-continue period
@@ -1109,6 +1109,121 @@ struct MainView: View {
             }
         }
         print("🛑 handleStop complete - timer stopped and all dialogs dismissed")
+    }
+
+    /// Process retroactive auto-continues when app returns to foreground after being away.
+    /// This fills intermediate blocks that would have auto-continued while backgrounded.
+    private func processRetroactiveAutoContinues(completedAt: Date, autoContinueDelay: TimeInterval, isBreak: Bool) async {
+        // Get the block that originally completed (still available in timerManager after handleTimerComplete)
+        guard let originalBlockIndex = timerManager.currentBlockIndex else {
+            print("⚠️ processRetroactiveAutoContinues: No original block index, falling back to single auto-continue")
+            if shouldSuppressAutoContinue {
+                handleStop()
+            } else {
+                timerManager.incrementInteractionCounter()
+                handleContinueWork()
+            }
+            return
+        }
+
+        let currentWallClockBlock = Block.getCurrentBlockIndex()
+        let blockDuration: TimeInterval = 20 * 60  // 1200 seconds
+
+        // The original block already completed and was saved by handleTimerComplete.
+        // Now we need to fill any intermediate blocks that would have auto-continued.
+
+        // Calculate when the first auto-continue would have fired
+        let firstAutoContinueAt = completedAt.addingTimeInterval(autoContinueDelay)
+
+        // If we're still on the same block, just do a simple auto-continue
+        if currentWallClockBlock == originalBlockIndex + 1 {
+            // Only one block has passed
+            if shouldSuppressAutoContinue {
+                handleStop()
+            } else {
+                timerManager.incrementInteractionCounter()
+                handleContinueWork()
+            }
+            return
+        }
+
+        // Multiple blocks have passed - need to fill intermediate blocks
+        let category = timerManager.currentCategory
+        let label = timerManager.currentLabel
+        var blocksAutoFilled = 0
+        let limit = blocksUntilCheckIn
+
+        print("📱 processRetroactiveAutoContinues: original block \(originalBlockIndex), current \(currentWallClockBlock), limit \(limit)")
+
+        // Fill blocks from (originalBlockIndex + 1) up to (currentWallClockBlock - 1)
+        // These are complete blocks that auto-continued and ran their full duration
+        for blockIdx in (originalBlockIndex + 1)..<currentWallClockBlock {
+            // Check if we've hit the check-in limit
+            if timerManager.blocksSinceLastInteraction + blocksAutoFilled >= limit {
+                print("📱 Check-in limit reached after \(blocksAutoFilled) retroactive blocks")
+                break
+            }
+
+            // Calculate when this block would have started (after auto-continue delay)
+            // Each block starts 25s after the previous one ended
+            // Block N ends at its block boundary, Block N+1 starts 25s later
+            let blockEndTime = Block.blockEndDate(for: blockIdx)
+
+            // Only fill if we're past this block's end time
+            if Date() > blockEndTime {
+                await markBlockAsAutoFilled(
+                    blockIndex: blockIdx,
+                    category: category,
+                    label: label,
+                    isBreak: isBreak
+                )
+                blocksAutoFilled += 1
+                timerManager.incrementInteractionCounter()
+                print("📱 Retroactively filled block \(blockIdx)")
+            }
+        }
+
+        // Now handle the current block
+        let totalAutoContinues = blocksAutoFilled + 1  // +1 for the current block we're about to start
+        if timerManager.blocksSinceLastInteraction >= limit {
+            // Check-in limit reached - stop
+            print("📱 Check-in limit reached, stopping after \(blocksAutoFilled) retroactive fills")
+            handleStop()
+        } else {
+            // Start timer on current block
+            timerManager.incrementInteractionCounter()
+            handleContinueWork()
+            print("📱 Started timer on block \(currentWallClockBlock) after \(blocksAutoFilled) retroactive fills")
+        }
+    }
+
+    /// Mark a block as auto-filled with a full work/break segment
+    private func markBlockAsAutoFilled(blockIndex: Int, category: String?, label: String?, isBreak: Bool) async {
+        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
+            print("⚠️ markBlockAsAutoFilled: Block \(blockIndex) not found")
+            return
+        }
+
+        // Create a full-duration segment for this block
+        let segment = BlockSegment(
+            type: isBreak ? .break : .work,
+            seconds: 1200,  // Full 20 minutes
+            category: isBreak ? nil : category,
+            label: isBreak ? nil : label,
+            startElapsed: 0
+        )
+
+        var updatedBlock = block
+        updatedBlock.status = .done
+        updatedBlock.usedSeconds = 1200
+        updatedBlock.progress = 100.0
+        updatedBlock.visualFill = 1.0
+        updatedBlock.segments = [segment]
+        updatedBlock.category = category ?? block.category
+        updatedBlock.label = label ?? block.label
+
+        await blockManager.saveBlock(updatedBlock)
+        blocksWithTimerUsage.insert(blockIndex)
     }
 
     private func handleSkipNextBlock() {
