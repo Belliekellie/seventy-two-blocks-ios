@@ -665,12 +665,27 @@ struct MainView: View {
 
         // Categories changed callback: called when category colors/names are updated
         blockManager.onCategoriesChanged = { [self] in
+            // Update widget data
             WidgetDataProvider.shared.updateWidgetData(
                 blocks: blockManager.blocks,
                 categories: blockManager.categories,
                 timerManager: timerManager,
                 goalManager: goalManager
             )
+
+            // Also update Live Activity if timer is running (so color changes reflect immediately)
+            if timerManager.isActive, let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt {
+                let categoryColor = blockManager.categories.first { $0.id == timerManager.currentCategory }?.color
+                WidgetDataProvider.shared.updateLiveActivity(
+                    timerEndAt: endAt,
+                    timerStartedAt: startedAt,
+                    category: blockManager.categories.first { $0.id == timerManager.currentCategory }?.label ?? timerManager.currentCategory,
+                    categoryColor: categoryColor,
+                    label: timerManager.currentLabel,
+                    progress: timerManager.progress,
+                    isBreak: timerManager.isBreak
+                )
+            }
         }
     }
 
