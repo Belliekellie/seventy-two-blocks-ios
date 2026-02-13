@@ -236,8 +236,8 @@ final class WidgetDataProvider {
     ) {
         guard let activity = currentActivity else { return }
 
-        // Reuse the cached autoContinueEndAt from startLiveActivity
-        // This ensures the Live Activity can still transition to auto-continue when backgrounded
+        // Don't set autoContinueEndAt during regular updates - it's already set in startLiveActivity
+        // Setting it here can confuse the TimelineView into thinking we're in auto-continue mode
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -247,7 +247,7 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: cachedAutoContinueEndAt,
+            autoContinueEndAt: nil,
             nextBlockIndex: nil,
             nextBlockDisplayNumber: nil,
             nextBlockTimerEndAt: nil,
