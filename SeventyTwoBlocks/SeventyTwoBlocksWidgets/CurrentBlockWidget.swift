@@ -149,14 +149,14 @@ struct SmallCurrentBlockView: View {
             if data.timerActive, let endAt = data.timerEndAt, let startedAt = data.timerStartedAt, endAt > Date() {
                 // Animated progress bar (labels hidden - otherwise shows a second counter)
                 ProgressView(timerInterval: startedAt...endAt, countsDown: false)
-                    .tint(data.timerIsBreak ? .orange : categoryColor)
+                    .tint(data.timerIsBreak ? .red : categoryColor)
                     .labelsHidden()
 
                 // Countdown
                 HStack(spacing: 4) {
                     Image(systemName: data.timerIsBreak ? "cup.and.saucer.fill" : "timer")
                         .font(.system(size: 10))
-                        .foregroundStyle(data.timerIsBreak ? .orange : .blue)
+                        .foregroundStyle(data.timerIsBreak ? .red : .blue)
                     Text(endAt, style: .timer)
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .monospacedDigit()
@@ -280,7 +280,7 @@ struct MediumCurrentBlockView: View {
             // Progress bar
             if data.timerActive, let startedAt = data.timerStartedAt, let endAt = data.timerEndAt, endAt > Date() {
                 ProgressView(timerInterval: startedAt...endAt, countsDown: false)
-                    .tint(data.timerIsBreak ? .orange : categoryColor)
+                    .tint(data.timerIsBreak ? .red : categoryColor)
                     .labelsHidden()
             }
 

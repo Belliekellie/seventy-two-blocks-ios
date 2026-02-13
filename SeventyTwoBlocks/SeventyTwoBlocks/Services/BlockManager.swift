@@ -12,6 +12,7 @@ final class BlockManager: ObservableObject {
     @Published var error: String?
 
     var onBlocksChanged: (() -> Void)?
+    var onCategoriesChanged: (() -> Void)?
 
     private var currentDate: String = ""
     private var categoriesLoaded = false
@@ -368,6 +369,9 @@ final class BlockManager: ObservableObject {
                 .execute()
 
             print("✅ Updated category \(categoryId): name=\(name), color=\(color)")
+
+            // Notify listeners (triggers widget update)
+            onCategoriesChanged?()
         } catch {
             print("❌ Error updating category: \(error)")
         }

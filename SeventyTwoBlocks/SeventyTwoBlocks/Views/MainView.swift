@@ -662,6 +662,16 @@ struct MainView: View {
                 goalManager: goalManager
             )
         }
+
+        // Categories changed callback: called when category colors/names are updated
+        blockManager.onCategoriesChanged = { [self] in
+            WidgetDataProvider.shared.updateWidgetData(
+                blocks: blockManager.blocks,
+                categories: blockManager.categories,
+                timerManager: timerManager,
+                goalManager: goalManager
+            )
+        }
     }
 
     private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment], visualFill: Double, blockTimeElapsed: Bool) async {
