@@ -14,6 +14,7 @@ final class WidgetDataProvider {
 
     #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     private var currentActivity: Activity<TimerActivityAttributes>?
+    private var cachedAutoContinueEndAt: Date?
     #endif
 
     private init() {
@@ -175,6 +176,7 @@ final class WidgetDataProvider {
         // before showing auto-continue UI, so this won't cause premature display.
         let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
         let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
+        cachedAutoContinueEndAt = autoContinueEndAt
 
         // Calculate next block info so Live Activity can continue after auto-continue
         let nextBlockIndex = blockIndex + 1
@@ -225,7 +227,8 @@ final class WidgetDataProvider {
     ) {
         guard let activity = currentActivity else { return }
 
-        // Don't pre-set autoContinueEndAt - only set via updateLiveActivityForAutoContinue
+        // Preserve autoContinueEndAt so TimelineView phase logic works correctly
+        // Without this, the Live Activity shows "Block Complete" prematurely
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -235,7 +238,7 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: nil,
+            autoContinueEndAt: cachedAutoContinueEndAt,
             nextBlockIndex: nil,
             nextBlockDisplayNumber: nil,
             nextBlockTimerEndAt: nil,
@@ -306,6 +309,7 @@ final class WidgetDataProvider {
             }
         }
 
+        cachedAutoContinueEndAt = nil
         currentActivity = nil
     }
     #else
