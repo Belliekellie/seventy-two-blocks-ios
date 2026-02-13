@@ -640,15 +640,11 @@ struct MainView: View {
                     progress: timerManager.progressPercent / 100.0,
                     isBreak: timerManager.isBreak
                 )
-            } else if timerManager.showTimerComplete || timerManager.showBreakComplete {
-                // Timer completed - update Live Activity to show auto-continue countdown
-                let autoContinueSeconds: TimeInterval = timerManager.showBreakComplete ? 30 : 25
-                let autoContinueEndAt = Date().addingTimeInterval(autoContinueSeconds)
-                WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                    autoContinueEndAt: autoContinueEndAt,
-                    isBreak: timerManager.showBreakComplete
-                )
             }
+            // NOTE: Don't call updateLiveActivityForAutoContinue here - it wipes out the next block info
+            // that was set in startLiveActivity. The Live Activity's TimelineView handles phase
+            // transitions autonomously using the pre-set dates (timerEndAt, autoContinueEndAt,
+            // nextBlockTimerEndAt, nextBlockAutoContinueEndAt).
         }
 
         // Blocks changed callback: called on load/save/reload

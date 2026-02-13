@@ -262,8 +262,7 @@ struct AutoContinueBannerView: View {
 
                 Spacer()
 
-                if let endAt = context.state.autoContinueEndAt, endAt > Date() {
-                    // Only show countdown if end time is in the future
+                if let endAt = context.state.autoContinueEndAt {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(endAt, style: .timer)
                             .font(.system(size: 24, weight: .bold, design: .monospaced))
@@ -274,11 +273,6 @@ struct AutoContinueBannerView: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.green)
                     }
-                } else {
-                    // Show completion indicator when countdown expired
-                    Text("DONE")
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.green)
                 }
             }
         }
