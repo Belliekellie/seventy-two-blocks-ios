@@ -371,8 +371,6 @@ struct MainView: View {
             selectedDate = logicalToday
             // Set initial idle timer state (keep screen on if timer running/paused)
             UIApplication.shared.isIdleTimerDisabled = timerManager.isActive || timerManager.isPaused
-            // Pre-initialize AudioManager on main thread to avoid delay on first haptic feedback
-            _ = AudioManager.shared
         }
         .onDisappear {
             // Re-enable idle timer when view disappears (safety cleanup)
