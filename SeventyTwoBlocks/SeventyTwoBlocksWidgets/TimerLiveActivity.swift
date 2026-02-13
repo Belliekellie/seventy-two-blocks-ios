@@ -26,8 +26,9 @@ struct TimerLiveActivity: Widget {
                 let nextBlockExpired = state.nextBlockTimerEndAt.map { now >= $0 } ?? false
                 let nextAutoContinueExpired = state.nextBlockAutoContinueEndAt.map { now >= $0 } ?? false
 
-                if state.isAutoContinue {
+                if state.isAutoContinue && !autoContinueExpired {
                     // App explicitly set auto-continue mode - show auto-continue countdown
+                    // Only while countdown is still active (not expired)
                     AutoContinueBannerView(context: context, timerExpired: true)
                         .padding(16)
                         .activityBackgroundTint(Color.green.opacity(0.15))
@@ -261,7 +262,8 @@ struct AutoContinueBannerView: View {
 
                 Spacer()
 
-                if let endAt = context.state.autoContinueEndAt {
+                if let endAt = context.state.autoContinueEndAt, endAt > Date() {
+                    // Only show countdown if end time is in the future
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(endAt, style: .timer)
                             .font(.system(size: 24, weight: .bold, design: .monospaced))
@@ -272,6 +274,11 @@ struct AutoContinueBannerView: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.green)
                     }
+                } else {
+                    // Show completion indicator when countdown expired
+                    Text("DONE")
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.green)
                 }
             }
         }
