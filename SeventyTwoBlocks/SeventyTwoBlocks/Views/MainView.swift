@@ -628,11 +628,7 @@ struct MainView: View {
                 timerManager: timerManager,
                 goalManager: goalManager
             )
-            // Update Live Activity state only while timer is running
-            // When timer completes, the Live Activity's TimelineView handles the phase transition
-            // autonomously using the pre-set autoContinueEndAt from startLiveActivity
-            // DO NOT call updateLiveActivityForAutoContinue here - it breaks the phase logic
-            // by setting timerEndAt to a future date, causing the timer to count UP
+            // Update Live Activity state
             if timerManager.isActive, let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt {
                 let categoryColor = blockManager.categories.first { $0.id == timerManager.currentCategory }?.color
                 WidgetDataProvider.shared.updateLiveActivity(
@@ -643,6 +639,14 @@ struct MainView: View {
                     label: timerManager.currentLabel,
                     progress: timerManager.progressPercent / 100.0,
                     isBreak: timerManager.isBreak
+                )
+            } else if timerManager.showTimerComplete || timerManager.showBreakComplete {
+                // Timer completed - update Live Activity to show auto-continue countdown
+                let autoContinueSeconds: TimeInterval = timerManager.showBreakComplete ? 30 : 25
+                let autoContinueEndAt = Date().addingTimeInterval(autoContinueSeconds)
+                WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
+                    autoContinueEndAt: autoContinueEndAt,
+                    isBreak: timerManager.showBreakComplete
                 )
             }
         }

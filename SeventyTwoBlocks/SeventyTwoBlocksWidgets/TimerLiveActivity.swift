@@ -19,12 +19,19 @@ struct TimerLiveActivity: Widget {
                 let state = context.state
 
                 // Determine which phase we're in
+                // Check isAutoContinue flag FIRST - when app updates state for auto-continue,
+                // this flag is set and we should show auto-continue regardless of time comparisons
                 let currentBlockExpired = now >= state.timerEndAt
                 let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? false
                 let nextBlockExpired = state.nextBlockTimerEndAt.map { now >= $0 } ?? false
                 let nextAutoContinueExpired = state.nextBlockAutoContinueEndAt.map { now >= $0 } ?? false
 
-                if !currentBlockExpired {
+                if state.isAutoContinue {
+                    // App explicitly set auto-continue mode - show auto-continue countdown
+                    AutoContinueBannerView(context: context, timerExpired: true)
+                        .padding(16)
+                        .activityBackgroundTint(Color.green.opacity(0.15))
+                } else if !currentBlockExpired {
                     // Phase 1: Current block running
                     LockScreenBannerView(context: context)
                         .padding(16)
