@@ -234,7 +234,7 @@ struct MediumCurrentBlockView: View {
                         if data.timerIsBreak {
                             Text("BREAK")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.red)
                         }
                     }
                     .frame(width: 95, alignment: .trailing)
