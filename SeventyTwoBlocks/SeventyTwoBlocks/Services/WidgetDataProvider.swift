@@ -14,7 +14,12 @@ final class WidgetDataProvider {
 
     #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     private var currentActivity: Activity<TimerActivityAttributes>?
+    // Cached values from startLiveActivity - preserved during updateLiveActivity calls
     private var cachedAutoContinueEndAt: Date?
+    private var cachedNextBlockIndex: Int?
+    private var cachedNextBlockDisplayNumber: Int?
+    private var cachedNextBlockTimerEndAt: Date?
+    private var cachedNextBlockAutoContinueEndAt: Date?
     #endif
 
     private init() {
@@ -176,12 +181,19 @@ final class WidgetDataProvider {
         // before showing auto-continue UI, so this won't cause premature display.
         let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
         let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
-        cachedAutoContinueEndAt = autoContinueEndAt
 
         // Calculate next block info so Live Activity can continue after auto-continue
         let nextBlockIndex = blockIndex + 1
         let nextBlockTimerEndAt = nextBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: nextBlockIndex) : nil
         let nextBlockAutoContinueEndAt = nextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+        let nextBlockDisplayNum = nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil
+
+        // Cache all values so updateLiveActivity can preserve them
+        cachedAutoContinueEndAt = autoContinueEndAt
+        cachedNextBlockIndex = nextBlockIndex < 72 ? nextBlockIndex : nil
+        cachedNextBlockDisplayNumber = nextBlockDisplayNum
+        cachedNextBlockTimerEndAt = nextBlockTimerEndAt
+        cachedNextBlockAutoContinueEndAt = nextBlockAutoContinueEndAt
 
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
@@ -193,8 +205,8 @@ final class WidgetDataProvider {
             isBreak: isBreak,
             isAutoContinue: false,
             autoContinueEndAt: autoContinueEndAt,
-            nextBlockIndex: nextBlockIndex < 72 ? nextBlockIndex : nil,
-            nextBlockDisplayNumber: nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil,
+            nextBlockIndex: cachedNextBlockIndex,
+            nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
             nextBlockTimerEndAt: nextBlockTimerEndAt,
             nextBlockAutoContinueEndAt: nextBlockAutoContinueEndAt
         )
@@ -227,8 +239,8 @@ final class WidgetDataProvider {
     ) {
         guard let activity = currentActivity else { return }
 
-        // Preserve autoContinueEndAt so TimelineView phase logic works correctly
-        // Without this, the Live Activity shows "Block Complete" prematurely
+        // Preserve all cached values so TimelineView phase logic works correctly
+        // Without these, the Live Activity loses the ability to transition through phases
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -239,13 +251,15 @@ final class WidgetDataProvider {
             isBreak: isBreak,
             isAutoContinue: false,
             autoContinueEndAt: cachedAutoContinueEndAt,
-            nextBlockIndex: nil,
-            nextBlockDisplayNumber: nil,
-            nextBlockTimerEndAt: nil,
-            nextBlockAutoContinueEndAt: nil
+            nextBlockIndex: cachedNextBlockIndex,
+            nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
+            nextBlockTimerEndAt: cachedNextBlockTimerEndAt,
+            nextBlockAutoContinueEndAt: cachedNextBlockAutoContinueEndAt
         )
 
-        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(120))
+        // Stale date should extend to cover all phases
+        let staleDate = cachedNextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
+        let content = ActivityContent(state: state, staleDate: staleDate)
 
         Task {
             await activity.update(content)
@@ -310,6 +324,10 @@ final class WidgetDataProvider {
         }
 
         cachedAutoContinueEndAt = nil
+        cachedNextBlockIndex = nil
+        cachedNextBlockDisplayNumber = nil
+        cachedNextBlockTimerEndAt = nil
+        cachedNextBlockAutoContinueEndAt = nil
         currentActivity = nil
     }
     #else
