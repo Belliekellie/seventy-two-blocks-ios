@@ -377,6 +377,10 @@ struct MainView: View {
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .task {
+            // Pre-initialize AudioManager to avoid 2-3 second delay on first haptic feedback
+            // (AVAudioSession setup is slow on first access)
+            _ = AudioManager.shared
+
             async let blocksLoad: Void = blockManager.loadBlocks(for: selectedDate)
             async let goalsLoad: Void = goalManager.loadGoals(for: selectedDate)
             _ = await (blocksLoad, goalsLoad)
