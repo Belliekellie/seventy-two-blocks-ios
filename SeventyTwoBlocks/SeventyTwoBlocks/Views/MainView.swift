@@ -371,16 +371,14 @@ struct MainView: View {
             selectedDate = logicalToday
             // Set initial idle timer state (keep screen on if timer running/paused)
             UIApplication.shared.isIdleTimerDisabled = timerManager.isActive || timerManager.isPaused
+            // Pre-initialize AudioManager on main thread to avoid delay on first haptic feedback
+            _ = AudioManager.shared
         }
         .onDisappear {
             // Re-enable idle timer when view disappears (safety cleanup)
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .task {
-            // Pre-initialize AudioManager to avoid 2-3 second delay on first haptic feedback
-            // (AVAudioSession setup is slow on first access)
-            _ = AudioManager.shared
-
             async let blocksLoad: Void = blockManager.loadBlocks(for: selectedDate)
             async let goalsLoad: Void = goalManager.loadGoals(for: selectedDate)
             _ = await (blocksLoad, goalsLoad)
