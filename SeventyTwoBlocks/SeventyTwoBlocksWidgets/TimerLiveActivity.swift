@@ -7,7 +7,9 @@ struct TimerLiveActivity: Widget {
         ActivityConfiguration(for: TimerActivityAttributes.self) { context in
             // Lock screen banner view
             // Use TimelineView to re-evaluate at key transition times
+            // Include Date() to ensure correct rendering for current state (not just future dates)
             TimelineView(.explicit([
+                Date(),
                 context.state.timerEndAt,
                 context.state.autoContinueEndAt,
                 context.state.nextBlockTimerEndAt,
@@ -63,7 +65,7 @@ struct TimerLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                    TimelineView(.explicit([Date(), context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
                         let now = timeline.date
                         let timerExpired = now >= context.state.timerEndAt
                         let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
@@ -87,7 +89,7 @@ struct TimerLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    TimelineView(.explicit([context.state.timerEndAt])) { timeline in
+                    TimelineView(.explicit([Date(), context.state.timerEndAt])) { timeline in
                         let now = timeline.date
                         let timerExpired = now >= context.state.timerEndAt
                         let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
@@ -110,7 +112,7 @@ struct TimerLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    TimelineView(.explicit([context.state.timerEndAt])) { timeline in
+                    TimelineView(.explicit([Date(), context.state.timerEndAt])) { timeline in
                         let now = timeline.date
                         let timerExpired = now >= context.state.timerEndAt
                         let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
@@ -125,7 +127,7 @@ struct TimerLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                TimelineView(.explicit([context.state.timerEndAt])) { timeline in
+                TimelineView(.explicit([Date(), context.state.timerEndAt])) { timeline in
                     let now = timeline.date
                     let timerExpired = now >= context.state.timerEndAt
                     let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
@@ -140,7 +142,7 @@ struct TimerLiveActivity: Widget {
                     }
                 }
             } compactTrailing: {
-                TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                TimelineView(.explicit([Date(), context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
                     let now = timeline.date
                     let timerExpired = now >= context.state.timerEndAt
                     let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
@@ -157,7 +159,7 @@ struct TimerLiveActivity: Widget {
                     }
                 }
             } minimal: {
-                TimelineView(.explicit([context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
+                TimelineView(.explicit([Date(), context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
                     let now = timeline.date
                     let timerExpired = now >= context.state.timerEndAt
                     let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
