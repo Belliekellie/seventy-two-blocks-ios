@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		F664A0642F253F5500750C58 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = F664A0632F253F5500750C58 /* Auth */; };
 		F664A0662F253F5500750C58 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = F664A0652F253F5500750C58 /* PostgREST */; };
-		F6A1D00A2F3000000000000D /* SeventyTwoBlocksWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F6A1D00A2F30000000000001 /* SeventyTwoBlocksWidgets.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F6A1D00A2F3000000000000D /* SeventyTwoBlocksWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F6A1D00A2F30000000000001 /* SeventyTwoBlocksWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

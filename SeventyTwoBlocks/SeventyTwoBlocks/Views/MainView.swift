@@ -59,9 +59,9 @@ struct MainView: View {
         timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn
     }
 
-    /// Count of completed (done) blocks today, excluding muted blocks
+    /// Count of completed (done) blocks today
     private var completedBlocks: Int {
-        blockManager.blocks.filter { $0.status == .done && !$0.isMuted }.count
+        blockManager.blocks.filter { $0.status == .done }.count
     }
 
     var body: some View {
@@ -112,12 +112,6 @@ struct MainView: View {
                             date: selectedDate,
                             selectedBlockIndex: $selectedBlockIndex
                         )
-
-                        // Quick Actions - only for today (these affect today's blocks)
-                        if isToday {
-                            QuickActionsView()
-                                .padding(.horizontal, 4)
-                        }
 
                     }
                     .padding(.horizontal, 16)
@@ -390,11 +384,13 @@ struct MainView: View {
             _ = await NotificationManager.shared.requestPermission()
             NotificationManager.shared.setupNotificationCategories()
 
+            // Check for orphaned timer session (app was terminated while timer running)
+            // This must run after blocks load but before auto-skip
+            await recoverOrphanedTimerSession()
+
             // Run auto-skip on initial load for today
             if isToday {
                 await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
-                // Ensure night blocks have correct muted state (fixes inconsistencies from past dayStartHour changes)
-                await blockManager.ensureNightBlockConsistency()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -771,13 +767,8 @@ struct MainView: View {
             updatedBlock.label = label
             // Don't change status — the timer is about to start on this block.
             // onTimerComplete will mark it .done when it finishes.
-            // IMPORTANT: Unmute and activate the block if it was muted (e.g., night/sleep blocks)
-            // This allows work to continue into deactivated sections
-            if block.isMuted {
-                print("🌙 Activating muted block \(blockIndex) for continuation")
-                updatedBlock.isMuted = false
-                updatedBlock.isActivated = true
-            }
+            // Mark as activated (hides moon icon in Night segment)
+            updatedBlock.isActivated = true
             updatedBlock.updatedAt = ISO8601DateFormatter().string(from: Date())
             await blockManager.saveBlock(updatedBlock)
             print("🔄 Block updated successfully")
@@ -1109,6 +1100,106 @@ struct MainView: View {
             }
         }
         print("🛑 handleStop complete - timer stopped and all dialogs dismissed")
+    }
+
+    /// Recover from app termination while timer was running (cold launch recovery).
+    /// Checks for blocks with activeRunSnapshot and finalizes them if their time has passed.
+    private func recoverOrphanedTimerSession() async {
+        // Only check today's blocks - past days' orphaned sessions are handled by auto-skip
+        guard isToday else { return }
+
+        // Find block with an active (non-ended) snapshot
+        guard let orphanedBlock = blockManager.blocks.first(where: { block in
+            guard let snapshot = block.activeRunSnapshot else { return false }
+            // Snapshot is orphaned if endedAt is nil (timer was running when app died)
+            return snapshot.endedAt == nil
+        }) else {
+            return
+        }
+
+        guard let snapshot = orphanedBlock.activeRunSnapshot else { return }
+
+        let blockEndTime = Block.blockEndDate(for: orphanedBlock.blockIndex)
+        let now = Date()
+
+        print("🔄 Found orphaned timer session on block \(orphanedBlock.blockIndex), blockEndTime=\(blockEndTime), now=\(now)")
+
+        // Only process if this block's time has passed
+        guard now > blockEndTime else {
+            print("🔄 Orphaned block \(orphanedBlock.blockIndex) is still current - will be handled by normal timer flow")
+            return
+        }
+
+        // Block time has passed - finalize it as complete
+        // The snapshot contains segments up to when the app was terminated
+        // We should credit the full block since timer was meant to run to boundary
+        let snapshotSegments = snapshot.segments
+        let lastSegmentType = snapshotSegments.last?.type ?? .work
+        let lastCategory = snapshotSegments.last(where: { $0.type == .work })?.category ?? orphanedBlock.category
+        let lastLabel = snapshotSegments.last(where: { $0.type == .work })?.label ?? orphanedBlock.label
+
+        // Calculate how much time the snapshot captured
+        let snapshotSeconds = snapshotSegments.reduce(0) { $0 + $1.seconds }
+
+        // The timer was meant to run to block boundary - credit the remaining time
+        // (This handles the case where app died mid-timer)
+        let blockDuration = 1200 // 20 minutes
+        let remainingSeconds = max(0, blockDuration - snapshotSeconds)
+
+        var finalSegments = snapshotSegments
+        if remainingSeconds > 0 {
+            // Add the remaining time as a final segment (same type as last segment)
+            let finalSegment = BlockSegment(
+                type: lastSegmentType,
+                seconds: remainingSeconds,
+                category: lastSegmentType == .work ? lastCategory : nil,
+                label: lastSegmentType == .work ? lastLabel : nil,
+                startElapsed: snapshotSeconds
+            )
+            finalSegments.append(finalSegment)
+        }
+
+        // Normalize and save the block as done
+        var updatedBlock = orphanedBlock
+        updatedBlock.segments = BlockSegment.normalized(finalSegments)
+        updatedBlock.status = .done
+        updatedBlock.usedSeconds = finalSegments.reduce(0) { $0 + $1.seconds }
+        updatedBlock.visualFill = 1.0  // Full block
+        updatedBlock.activeRunSnapshot = nil  // Clear the snapshot
+        updatedBlock.progress = Double(updatedBlock.segments.filter { $0.type == .work }.reduce(0) { $0 + $1.seconds }) / 12.0
+
+        await blockManager.saveBlock(updatedBlock)
+        print("✅ Recovered orphaned block \(orphanedBlock.blockIndex) - credited \(remainingSeconds)s additional time, total \(updatedBlock.usedSeconds)s")
+
+        // Now trigger auto-continue to current block if applicable
+        let currentWallClockBlock = Block.getCurrentBlockIndex()
+
+        // Don't auto-continue if too many blocks have passed (check-in threshold)
+        let blocksPassed = currentWallClockBlock - orphanedBlock.blockIndex
+        if blocksPassed > blocksUntilCheckIn {
+            print("🔄 Too many blocks passed (\(blocksPassed)) since orphaned block - not auto-continuing")
+            return
+        }
+
+        // Fill any intermediate blocks and continue to current
+        if currentWallClockBlock > orphanedBlock.blockIndex + 1 {
+            // Multiple blocks passed - fill intermediates
+            for blockIdx in (orphanedBlock.blockIndex + 1)..<currentWallClockBlock {
+                await markBlockAsAutoFilled(
+                    blockIndex: blockIdx,
+                    category: lastCategory,
+                    label: lastLabel,
+                    isBreak: lastSegmentType == .break
+                )
+            }
+        }
+
+        // Start timer on current block (auto-continue)
+        if currentWallClockBlock < 72 && !shouldSuppressAutoContinue {
+            print("🔄 Auto-continuing to block \(currentWallClockBlock) after orphaned session recovery")
+            timerManager.incrementInteractionCounter()
+            handleContinueWork()
+        }
     }
 
     /// Process retroactive auto-continues when app returns to foreground after being away.
@@ -1499,8 +1590,6 @@ struct MainView: View {
         if currentDateString >= pendingDayStartDateString && currentHour >= pendingDayStartHour {
             print("📅 Applying pending dayStartHour change: \(dayStartHour) → \(pendingDayStartHour)")
 
-            let oldHour = dayStartHour
-
             // Apply the change
             dayStartHour = pendingDayStartHour
 
@@ -1508,9 +1597,15 @@ struct MainView: View {
             pendingDayStartHour = -1
             pendingDayStartDateString = ""
 
-            // Update night block muted states based on new dayStartHour
+            // Run auto-skip to process any past blocks after dayStartHour change
             Task {
-                await blockManager.updateNightBlocksForDayStartHour(oldDayStartHour: oldHour, newDayStartHour: dayStartHour)
+                if isToday {
+                    await blockManager.processAutoSkip(
+                        currentBlockIndex: currentBlockIndex,
+                        timerBlockIndex: timerManager.currentBlockIndex,
+                        blocksWithTimerUsage: blocksWithTimerUsage
+                    )
+                }
             }
 
             // The change in dayStartHour will cause logicalToday to recalculate

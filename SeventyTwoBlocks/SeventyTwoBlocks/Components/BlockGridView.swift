@@ -519,8 +519,23 @@ struct BlockItemView: View {
         block?.status == .planned && isFutureBlock
     }
 
-    private var isMuted: Bool {
-        block?.isMuted ?? false
+    /// Block is in the Night segment (last 24 blocks of the user's day)
+    private var isInNightSegment: Bool {
+        segment.id == "sleep"
+    }
+
+    /// Should show moon icon - in Night segment and hasn't been interacted with
+    private var shouldShowMoon: Bool {
+        guard isInNightSegment else { return false }
+        // Don't show moon if block has been activated or has any activity
+        if block?.isActivated == true { return false }
+        if isDone { return false }
+        if isSkipped { return false }
+        if hasSegments { return false }
+        if isCurrentBlock { return false }
+        if isTimerActiveOnThisBlock { return false }
+        if block?.category != nil || block?.label != nil { return false }  // Has planning
+        return true
     }
 
     private var categoryColor: Color? {
@@ -540,7 +555,8 @@ struct BlockItemView: View {
     }
 
     private var backgroundColor: Color {
-        if isMuted && block?.isActivated != true {
+        // Night segment blocks that haven't been interacted with get subtle background
+        if shouldShowMoon {
             return Color.gray.opacity(0.15)
         }
 
@@ -900,23 +916,38 @@ struct BlockItemView: View {
                         let liveSegs = timerManager.liveSegmentsIncludingCurrent
                         let totalLiveSeconds = liveSegs.reduce(0) { $0 + $1.seconds }
                         let totalSeconds = totalPreviousSeconds + totalLiveSeconds
-                        // Apply minimum fill if total fill would be less than ~60 seconds (about 4px on typical screen)
-                        // This ensures visible fill even when paused early
-                        let applyMinFill = totalSeconds < 60
-                        // Use composite id including seconds so SwiftUI detects changes and re-renders
-                        ForEach(Array(liveSegs.enumerated()), id: \.element.compositeId) { index, segment in
-                            let segmentStart = liveStartOffset * visualScale + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor) * visualScale
-                            let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0 - segmentStart)
-                            // Subtle initial sliver (4px) so user sees timer started
-                            let isLastSegment = index == liveSegs.count - 1
-                            let fillWidth = (isLastSegment && applyMinFill) ? max(4, rawWidth) : rawWidth
 
+                        // Apply minimum fill only to the FIRST segment of the block (when no previous fill exists)
+                        // This ensures the initial sliver is visible, but subsequent segments build from there naturally
+                        let isBlockStart = totalPreviousSeconds == 0
+                        let applyMinFillToFirst = isBlockStart && totalSeconds < 60
+
+                        // Pre-compute segment widths and offsets to handle min fill correctly
+                        // This ensures subsequent segments start AFTER any min fill applied to the first segment
+                        let segmentData: [(segment: BlockSegment, offset: CGFloat, width: CGFloat)] = {
+                            var result: [(segment: BlockSegment, offset: CGFloat, width: CGFloat)] = []
+                            var currentOffset = liveStartOffset * visualScale * geo.size.width
+
+                            for (index, segment) in liveSegs.enumerated() {
+                                let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0)
+                                // Apply minimum 4px fill only to the very first segment of the block
+                                let isFirstSegment = index == 0 && isBlockStart
+                                let fillWidth = (isFirstSegment && applyMinFillToFirst) ? max(4, rawWidth) : rawWidth
+
+                                result.append((segment: segment, offset: currentOffset, width: fillWidth))
+                                currentOffset += fillWidth
+                            }
+                            return result
+                        }()
+
+                        // Render segments with pre-computed offsets
+                        ForEach(Array(segmentData.enumerated()), id: \.element.segment.compositeId) { _, data in
                             Rectangle()
-                                .fill(colorForSegment(segment))
-                                .frame(width: fillWidth)
-                                .offset(x: geo.size.width * min(segmentStart, 1.0))
+                                .fill(colorForSegment(data.segment))
+                                .frame(width: data.width)
+                                .offset(x: min(data.offset, geo.size.width))
                                 // Only animate during active timing, not pause/resume transitions
-                                .animation(timerManager.isActive ? .linear(duration: 1) : nil, value: fillWidth)
+                                .animation(timerManager.isActive ? .linear(duration: 1) : nil, value: data.width)
                         }
                     }
                 }
@@ -941,21 +972,33 @@ struct BlockItemView: View {
                             ? effectiveVisualFill / Double(totalSegmentSeconds)
                             : 1.0 / 1200.0
 
-                        // Apply minimum fill for very short sessions (< 60 seconds total)
-                        // This ensures visible fill even when stopped early
-                        let applyMinFill = totalSegmentSeconds < 60
+                        // Apply minimum fill only to the FIRST segment if total is very short
+                        // This ensures visible fill even when stopped early, without overlapping issues
+                        let applyMinFillToFirst = totalSegmentSeconds < 60
 
-                        ForEach(Array(segments.enumerated()), id: \.element.compositeId) { index, segment in
-                            let segmentStart = segmentStartProportion(at: index, segments: segments, scaleFactor: scaleFactor)
-                            let rawWidth = geo.size.width * min(Double(segment.seconds) * scaleFactor, 1.0 - segmentStart)
-                            // Ensure minimum 4px visible fill for the last segment if total is very short
-                            let isLastSegment = index == segments.count - 1
-                            let fillWidth = (isLastSegment && applyMinFill) ? max(4, rawWidth) : rawWidth
+                        // Pre-compute segment widths and offsets to handle min fill correctly
+                        let segmentData: [(segment: BlockSegment, offset: CGFloat, width: CGFloat)] = {
+                            var result: [(segment: BlockSegment, offset: CGFloat, width: CGFloat)] = []
+                            var currentOffset: CGFloat = 0
 
+                            for (index, segment) in segments.enumerated() {
+                                let rawWidth = geo.size.width * min(Double(segment.seconds) * scaleFactor, 1.0)
+                                // Apply minimum 4px fill only to the very first segment
+                                let isFirstSegment = index == 0
+                                let fillWidth = (isFirstSegment && applyMinFillToFirst) ? max(4, rawWidth) : rawWidth
+
+                                result.append((segment: segment, offset: currentOffset, width: fillWidth))
+                                currentOffset += fillWidth
+                            }
+                            return result
+                        }()
+
+                        // Render segments with pre-computed offsets
+                        ForEach(Array(segmentData.enumerated()), id: \.element.segment.compositeId) { _, data in
                             Rectangle()
-                                .fill(colorForSegment(segment))
-                                .frame(width: fillWidth)
-                                .offset(x: geo.size.width * segmentStart)
+                                .fill(colorForSegment(data.segment))
+                                .frame(width: data.width)
+                                .offset(x: min(data.offset, geo.size.width))
                         }
                     }
                 }
@@ -999,7 +1042,7 @@ struct BlockItemView: View {
 
             // Center: main content (label/status)
             Group {
-                if isMuted && block?.isActivated != true && !isDone && !hasSegments {
+                if shouldShowMoon {
                     Image(systemName: "moon.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(Color.gray.opacity(0.5))
@@ -1122,8 +1165,8 @@ struct BlockItemView: View {
                     userId: "",
                     date: "2024-01-01",
                     blockIndex: index,
-                    isMuted: index < 24,
-                    isActivated: false,
+                    isMuted: false,
+                    isActivated: index < 48,  // Night segment blocks (48-71) show moon
                     category: index % 5 == 0 ? "work" : nil,
                     label: index % 7 == 0 ? "Task" : nil,
                     note: nil,

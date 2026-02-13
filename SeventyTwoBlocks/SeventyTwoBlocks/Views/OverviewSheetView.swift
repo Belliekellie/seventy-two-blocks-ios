@@ -487,36 +487,29 @@ struct MonthlyOverviewContent: View {
 struct YearlyOverviewContent: View {
     @EnvironmentObject var blockManager: BlockManager
     @State private var yearlyBlocks: [Block] = []
+    @State private var stats: YearlyStats?
     @State private var isLoading = true
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
 
-    private var dateRange: [String] {
+    private var dateRange: (start: String, end: String) {
         let calendar = Calendar.current
-        var dates: [String] = []
+        var startComponents = DateComponents()
+        startComponents.year = selectedYear
+        startComponents.month = 1
+        startComponents.day = 1
 
-        var components = DateComponents()
-        components.year = selectedYear
-        components.month = 1
-        components.day = 1
+        var endComponents = DateComponents()
+        endComponents.year = selectedYear
+        endComponents.month = 12
+        endComponents.day = 31
 
-        guard let yearStart = calendar.date(from: components) else { return dates }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
 
-        let daysInYear = calendar.range(of: .day, in: .year, for: yearStart)?.count ?? 365
+        let startDate = calendar.date(from: startComponents) ?? Date()
+        let endDate = calendar.date(from: endComponents) ?? Date()
 
-        for i in 0..<daysInYear {
-            if let date = calendar.date(byAdding: .day, value: i, to: yearStart) {
-                dates.append(OverviewHelpers.formatDateKey(date))
-            }
-        }
-        return dates
-    }
-
-    private var stats: YearlyStats {
-        OverviewHelpers.calculateYearlyStats(
-            blocks: yearlyBlocks,
-            year: selectedYear,
-            categories: blockManager.categories
-        )
+        return (formatter.string(from: startDate), formatter.string(from: endDate))
     }
 
     var body: some View {
@@ -553,7 +546,7 @@ struct YearlyOverviewContent: View {
                 if isLoading {
                     ProgressView()
                         .padding(.vertical, 40)
-                } else {
+                } else if let stats = stats {
                     // Summary stats
                     HStack(spacing: 16) {
                         StatBox(icon: "target", iconColor: .green, value: "\(stats.totalCompleted)", label: "Blocks")
@@ -622,8 +615,26 @@ struct YearlyOverviewContent: View {
 
     private func loadYearlyBlocks() async {
         isLoading = true
-        // Only load blocks with activity for better performance
-        yearlyBlocks = await blockManager.loadBlocksForDateRange(dates: dateRange, onlyWithActivity: true)
+        stats = nil
+
+        // Load blocks using range query (more efficient than passing 365 dates)
+        let range = dateRange
+        yearlyBlocks = await blockManager.loadBlocksForRange(startDate: range.start, endDate: range.end, onlyWithActivity: true)
+
+        // Compute stats on background thread to avoid blocking UI
+        let blocks = yearlyBlocks
+        let year = selectedYear
+        let categories = blockManager.categories
+
+        let computedStats = await Task.detached(priority: .userInitiated) {
+            return OverviewHelpers.calculateYearlyStats(
+                blocks: blocks,
+                year: year,
+                categories: categories
+            )
+        }.value
+
+        stats = computedStats
         isLoading = false
     }
 }
@@ -950,7 +961,7 @@ enum OverviewHelpers {
 
     // Calculate worked seconds from actual segments (matches StatsCardView)
     // IMPORTANT: Only counts blocks that are .done - skipped blocks should not count toward totals
-    static func calculateWorkedSeconds(blocks: [Block]) -> Int {
+    nonisolated static func calculateWorkedSeconds(blocks: [Block]) -> Int {
         return blocks.reduce(0) { total, block in
             total + workedSecondsFor(block)
         }
@@ -958,7 +969,7 @@ enum OverviewHelpers {
 
     // Calculate worked seconds for a single block from segments
     // Returns 0 for skipped blocks - they shouldn't count toward worked time
-    static func workedSecondsFor(_ block: Block) -> Int {
+    nonisolated static func workedSecondsFor(_ block: Block) -> Int {
         // Skip blocks that aren't done - skipped blocks shouldn't count toward worked time
         guard block.status == .done else { return 0 }
 
@@ -975,7 +986,7 @@ enum OverviewHelpers {
         return workSeconds
     }
 
-    static func calculateCategoryStats(blocks: [Block], categories: [Category]) -> [CategoryWithLabels] {
+    nonisolated static func calculateCategoryStats(blocks: [Block], categories: [Category]) -> [CategoryWithLabels] {
         // Track category -> (count, seconds, labels -> seconds)
         // IMPORTANT: Aggregate from SEGMENT-level category/label, not block-level
         // This matches the web app behavior and allows segment edits to reflect in stats
@@ -1161,12 +1172,34 @@ enum OverviewHelpers {
         )
     }
 
-    static func calculateYearlyStats(blocks: [Block], year: Int, categories: [Category]) -> YearlyStats {
+    nonisolated static func calculateYearlyStats(blocks: [Block], year: Int, categories: [Category]) -> YearlyStats {
         let calendar = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
+        let monthFormatter = DateFormatter()
+        monthFormatter.dateFormat = "MMM"
 
-        // Group by month
+        // Pre-filter to done blocks once
+        let doneBlocks = blocks.filter { $0.status == .done }
+
+        // Pre-group blocks by month in a single pass (much faster than filtering 12 times)
+        // Date format is "yyyy-MM-dd", so month is characters 5-6
+        var blocksByMonth: [Int: [Block]] = [:]
+        for month in 1...12 {
+            blocksByMonth[month] = []
+        }
+
+        for block in doneBlocks {
+            // Extract month directly from date string "yyyy-MM-dd"
+            let dateStr = block.date
+            if dateStr.count >= 7 {
+                let monthStart = dateStr.index(dateStr.startIndex, offsetBy: 5)
+                let monthEnd = dateStr.index(dateStr.startIndex, offsetBy: 7)
+                if let month = Int(dateStr[monthStart..<monthEnd]) {
+                    blocksByMonth[month, default: []].append(block)
+                }
+            }
+        }
+
+        // Build monthly stats
         var monthlyData: [(monthLabel: String, completed: Int, minutes: Int)] = []
 
         for month in 1...12 {
@@ -1177,21 +1210,15 @@ enum OverviewHelpers {
 
             guard let monthStart = calendar.date(from: components) else { continue }
 
-            let monthBlocks = blocks.filter { block in
-                guard let blockDate = parseDate(block.date) else { return false }
-                return calendar.component(.month, from: blockDate) == month &&
-                       calendar.component(.year, from: blockDate) == year
-            }
+            let monthBlocks = blocksByMonth[month] ?? []
+            let completed = monthBlocks.count
+            let seconds = monthBlocks.reduce(0) { $0 + workedSecondsFor($1) }
 
-            let completed = monthBlocks.filter { $0.status == .done }.count
-            let seconds = monthBlocks.filter { $0.status == .done }.reduce(0) { $0 + workedSecondsFor($1) }
-
-            monthlyData.append((formatter.string(from: monthStart), completed, seconds / 60))
+            monthlyData.append((monthFormatter.string(from: monthStart), completed, seconds / 60))
         }
 
-        let doneBlocks = blocks.filter { $0.status == .done }
         let totalCompleted = doneBlocks.count
-        let totalMinutes = calculateWorkedSeconds(blocks: doneBlocks) / 60
+        let totalMinutes = doneBlocks.reduce(0) { $0 + workedSecondsFor($1) } / 60
         let totalSets = totalCompleted / 12
 
         // Days with activity

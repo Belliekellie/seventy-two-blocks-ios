@@ -4,7 +4,11 @@ import Auth
 struct SettingsView: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var blockManager: BlockManager
+    @EnvironmentObject var timerManager: TimerManager
     @Environment(\.dismiss) private var dismiss
+
+    // Reset Day confirmation
+    @State private var showResetConfirmation = false
 
     // Appearance (1 = light, 2 = dark) - matches CompactHeaderView and App
     @AppStorage("appearanceMode") private var appearanceMode: Int = 2
@@ -13,7 +17,6 @@ struct SettingsView: View {
     @AppStorage("dayStartHour") private var dayStartHour = 6
     @AppStorage("pendingDayStartHour") private var pendingDayStartHour: Int = -1  // -1 means no pending change
     @AppStorage("pendingDayStartDateString") private var pendingDayStartDateString: String = ""
-    @AppStorage("autoActivateSleepBlocks") private var autoActivateSleepBlocks = true
 
     @State private var showDayStartPreview = false
 
@@ -83,20 +86,11 @@ struct SettingsView: View {
                         pendingDayStartDateString: $pendingDayStartDateString,
                         showPreview: $showDayStartPreview
                     )
-
-                    Toggle(isOn: $autoActivateSleepBlocks) {
-                        HStack(spacing: 8) {
-                            Text("🔒")
-                            Text("Keep sleep blocks locked")
-                        }
-                    }
                 } header: {
                     Text("Day Settings")
                 } footer: {
                     if pendingDayStartHour >= 0 {
-                        Text("Change will take effect at \(pendingDayStartHour):00 AM on \(formattedPendingDate). Sleep blocks stay inactive until manually activated.")
-                    } else {
-                        Text("When enabled, sleep blocks stay inactive until manually activated.")
+                        Text("Change will take effect at \(pendingDayStartHour):00 AM on \(formattedPendingDate).")
                     }
                 }
 
@@ -286,6 +280,31 @@ struct SettingsView: View {
                     Text("Statistics")
                 }
 
+                // Data Management
+                Section {
+                    Button(role: .destructive) {
+                        if !timerManager.isActive {
+                            showResetConfirmation = true
+                        } else {
+                            AudioManager.shared.triggerHapticFeedback(.error)
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("🔄")
+                            Text("Reset Today's Blocks")
+                        }
+                    }
+                    .disabled(timerManager.isActive)
+                } header: {
+                    Text("Data")
+                } footer: {
+                    if timerManager.isActive {
+                        Text("Stop the timer before resetting today's blocks.")
+                    } else {
+                        Text("Clear all data from today's blocks including categories, labels, and progress.")
+                    }
+                }
+
                 // About
                 Section("About") {
                     HStack {
@@ -299,6 +318,17 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .alert("Reset All Blocks?", isPresented: $showResetConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Reset Day", role: .destructive) {
+                    Task {
+                        await blockManager.resetTodayBlocks()
+                        AudioManager.shared.triggerHapticFeedback(.success)
+                    }
+                }
+            } message: {
+                Text("This will clear all data from today's blocks including categories, labels, and progress. This cannot be undone.")
+            }
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -994,4 +1024,5 @@ struct YearlyStatsView: View {
     SettingsView()
         .environmentObject(AuthManager())
         .environmentObject(BlockManager())
+        .environmentObject(TimerManager())
 }

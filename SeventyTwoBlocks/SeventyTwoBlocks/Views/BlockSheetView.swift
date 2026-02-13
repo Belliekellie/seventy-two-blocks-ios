@@ -1026,10 +1026,9 @@ struct BlockSheetView: View {
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let dateString = dateFormatter.string(from: Date())
 
-        // Save block and handle night block activation
+        // Save block and mark as activated (hides moon icon in Night segment)
         Task {
             await saveBlock()
-            // If this is a night block, activate it and auto-skip previous unused night blocks
             await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
         }
 
@@ -1081,6 +1080,10 @@ struct BlockSheetView: View {
             updatedBlock.segments = timerManager.allSegmentsIncludingCurrent
             updatedBlock.usedSeconds = timerManager.secondsUsed
             // Don't change status while timer is running
+
+            // User is actively interacting with the app - reset counter to prevent auto-stop
+            print("💾   Resetting interaction counter - user changed category/label on active block")
+            timerManager.resetInteractionCounter()
         } else {
             // Timer not running - safe to update status
             updatedBlock.status = status
@@ -1161,7 +1164,6 @@ struct BlockSheetView: View {
         resetBlock.activeRunSnapshot = nil
         resetBlock.segments = []
         resetBlock.isActivated = false
-        // Preserve isMuted (sleep block status)
 
         await blockManager.saveBlock(resetBlock)
         await blockManager.reloadBlocks()

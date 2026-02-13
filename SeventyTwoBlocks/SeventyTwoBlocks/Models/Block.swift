@@ -248,9 +248,9 @@ struct Block: Codable, Identifiable {
         try container.encode(visualFill, forKey: .visualFill)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
-        // Don't encode runs and activeRunSnapshot - they may not exist in the DB
-        // try container.encode(runs, forKey: .runs)
-        // try container.encode(activeRunSnapshot, forKey: .activeRunSnapshot)
+        // Encode runs and activeRunSnapshot for timer recovery on cold launch
+        try container.encodeIfPresent(runs, forKey: .runs)
+        try container.encodeIfPresent(activeRunSnapshot, forKey: .activeRunSnapshot)
     }
 }
 

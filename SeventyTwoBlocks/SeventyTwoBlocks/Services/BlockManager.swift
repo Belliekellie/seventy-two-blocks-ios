@@ -145,6 +145,45 @@ final class BlockManager: ObservableObject {
         }
     }
 
+    /// Load blocks using simple start/end date strings (more efficient for large ranges like yearly)
+    func loadBlocksForRange(startDate: String, endDate: String, onlyWithActivity: Bool = false) async -> [Block] {
+        do {
+            let db = await supabaseDBAsync()
+
+            guard let session = try? await supabaseAuth.session else {
+                print("⚠️ No session available for loading blocks")
+                return []
+            }
+
+            let userId = session.user.id.uuidString
+
+            print("📊 Loading blocks for range: \(startDate) to \(endDate) (onlyWithActivity: \(onlyWithActivity))")
+
+            var query = db
+                .from("blocks")
+                .select()
+                .eq("user_id", value: userId)
+                .gte("date", value: startDate)
+                .lte("date", value: endDate)
+
+            if onlyWithActivity {
+                query = query.eq("status", value: "done")
+            }
+
+            let fetchedBlocks: [Block] = try await query
+                .order("date")
+                .order("block_index")
+                .execute()
+                .value
+
+            print("📊 Loaded \(fetchedBlocks.count) blocks for range")
+            return fetchedBlocks
+        } catch {
+            print("Error loading blocks for range: \(error)")
+            return []
+        }
+    }
+
     // MARK: - Update Block
 
     func updateBlock(_ block: Block) async {
@@ -568,22 +607,28 @@ final class BlockManager: ObservableObject {
         // Only process blocks for today
         guard currentDate == today else { return }
 
-        print("🔄 Processing auto-skip for blocks before \(currentBlockIndex)")
+        // Get dayStartHour to determine logical day order
+        // With dayStartHour = 7, the logical day order is: indices 21-71, then 0-20
+        // So indices 0-20 are FUTURE blocks (end of day), not past blocks
+        let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
+        let dayStartIndex = dayStartHour * 3
+
+        // Convert a block index to its logical position in the day (0-71 where 0 = start of user's day)
+        func logicalPosition(_ index: Int) -> Int {
+            return (index - dayStartIndex + 72) % 72
+        }
+
+        let currentLogicalPos = logicalPosition(currentBlockIndex)
+
+        print("🔄 Processing auto-skip for blocks before \(currentBlockIndex) (logical pos \(currentLogicalPos), dayStartIndex=\(dayStartIndex))")
 
         for block in blocks {
-            // Only process past blocks
-            guard block.blockIndex < currentBlockIndex else { continue }
+            // Only process past blocks - compare in logical day order, not raw index order
+            let blockLogicalPos = logicalPosition(block.blockIndex)
+            guard blockLogicalPos < currentLogicalPos else { continue }
 
             // Skip if already done or skipped
             guard block.status != .done && block.status != .skipped else { continue }
-
-            // NEVER auto-skip night blocks (0-23) - they're a special section
-            // Night blocks should only be skipped via activateBlockForTimer when someone
-            // actually starts a timer in that section during the allotted time
-            guard !nightBlocksRange.contains(block.blockIndex) else { continue }
-
-            // Skip muted blocks (sleep blocks outside night range, if any)
-            guard !block.isMuted else { continue }
 
             // Don't process the block that has an active timer
             if let timerBlock = timerBlockIndex, block.blockIndex == timerBlock {
@@ -634,118 +679,8 @@ final class BlockManager: ObservableObject {
     /// Night blocks - blocks BEFORE the user's day start hour
     /// e.g., dayStartHour=7 → night blocks are 0-20 (midnight to 6:40am)
     /// e.g., dayStartHour=6 → night blocks are 0-17 (midnight to 5:40am)
-    private var dayStartBlockIndex: Int {
-        let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
-        return dayStartHour * 3  // 3 blocks per hour
-    }
-
-    private func isNightBlock(_ blockIndex: Int) -> Bool {
-        return blockIndex < dayStartBlockIndex
-    }
-
-    // Keep nightBlocksRange for backwards compatibility, but it now uses dayStartHour
-    private var nightBlocksRange: ClosedRange<Int> {
-        let endIndex = max(0, dayStartBlockIndex - 1)
-        return 0...endIndex
-    }
-
-    /// Ensure night blocks have correct muted state based on current dayStartHour
-    /// Called on app launch to fix any inconsistencies from past dayStartHour changes
-    func ensureNightBlockConsistency() async {
-        let keepSleepBlocksLocked = UserDefaults.standard.object(forKey: "autoActivateSleepBlocks") as? Bool ?? true
-        guard keepSleepBlocksLocked else { return }
-
-        let today = formatDate(Date())
-        guard currentDate == today else { return }
-
-        // Collect blocks that need updating (don't modify while iterating)
-        var blocksToMute: [Block] = []
-
-        for block in blocks {
-            guard block.date == today else { continue }
-
-            let shouldBeNightBlock = isNightBlock(block.blockIndex)
-
-            // Skip blocks with data - don't change their muted state
-            let hasData = !block.segments.isEmpty || block.usedSeconds > 0 || block.progress > 0
-            if hasData || block.status == .done { continue }
-
-            if shouldBeNightBlock && !block.isMuted {
-                var updatedBlock = block
-                updatedBlock.isMuted = true
-                updatedBlock.isActivated = false
-                blocksToMute.append(updatedBlock)
-            }
-        }
-
-        // Apply updates after iteration
-        for updatedBlock in blocksToMute {
-            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == updatedBlock.blockIndex }) {
-                blocks[localIdx] = updatedBlock
-            }
-            await saveBlock(updatedBlock)
-            print("🌙 Fixed: Muted block \(updatedBlock.blockIndex) - should be a night block")
-        }
-    }
-
-    /// Update night block muted states when dayStartHour changes
-    /// Blocks that are now night blocks (and have no data) get muted
-    /// Blocks that are no longer night blocks get unmuted
-    func updateNightBlocksForDayStartHour(oldDayStartHour: Int, newDayStartHour: Int) async {
-        let keepSleepBlocksLocked = UserDefaults.standard.object(forKey: "autoActivateSleepBlocks") as? Bool ?? true
-        guard keepSleepBlocksLocked else { return }  // Only update if setting is on
-
-        let oldDayStartBlockIndex = oldDayStartHour * 3
-        let newDayStartBlockIndex = newDayStartHour * 3
-
-        let today = formatDate(Date())
-        guard currentDate == today else { return }
-
-        // Collect blocks that need updating (don't modify while iterating)
-        var blocksToUpdate: [(block: Block, shouldMute: Bool)] = []
-
-        for block in blocks {
-            guard block.date == today else { continue }
-
-            let wasNightBlock = block.blockIndex < oldDayStartBlockIndex
-            let isNowNightBlock = block.blockIndex < newDayStartBlockIndex
-
-            // Skip blocks with data - don't change their muted state
-            let hasData = !block.segments.isEmpty || block.usedSeconds > 0 || block.progress > 0
-            if hasData || block.status == .done { continue }
-
-            if !wasNightBlock && isNowNightBlock && !block.isMuted {
-                // Block is NOW a night block but wasn't before - mute it
-                var updatedBlock = block
-                updatedBlock.isMuted = true
-                updatedBlock.isActivated = false
-                blocksToUpdate.append((updatedBlock, true))
-            } else if wasNightBlock && !isNowNightBlock && block.isMuted {
-                // Block WAS a night block but isn't anymore - unmute it
-                var updatedBlock = block
-                updatedBlock.isMuted = false
-                blocksToUpdate.append((updatedBlock, false))
-            }
-        }
-
-        // Apply updates after iteration
-        for (updatedBlock, shouldMute) in blocksToUpdate {
-            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == updatedBlock.blockIndex }) {
-                blocks[localIdx] = updatedBlock
-            }
-            await saveBlock(updatedBlock)
-            if shouldMute {
-                print("🌙 Muted block \(updatedBlock.blockIndex) - now a night block")
-            } else {
-                print("☀️ Unmuted block \(updatedBlock.blockIndex) - no longer a night block")
-            }
-        }
-    }
-
-    /// Called when continuing/starting a timer on a block - handles muted block activation
-    /// This will:
-    /// 1. Unmute and activate the block being started (any muted block)
-    /// 2. For night blocks: auto-skip all previous muted/unused night blocks
+    /// Called when starting a timer on a block - marks block as activated (hides moon icon)
+    /// and clears .planned status since the timer is starting
     func activateBlockForTimer(blockIndex: Int) async {
         let today = formatDate(Date())
         guard currentDate == today else { return }
@@ -753,17 +688,16 @@ final class BlockManager: ObservableObject {
         // Find the block being activated
         guard let block = blocks.first(where: { $0.blockIndex == blockIndex }) else { return }
 
-        // Activate the block for timer use: unmute if needed, clear .planned status
         var needsSave = false
         var activatedBlock = block
 
-        if block.isMuted {
-            activatedBlock.isMuted = false
+        // Mark as activated (hides moon icon in Night segment)
+        if !block.isActivated {
             activatedBlock.isActivated = true
             needsSave = true
-            print("🌙 Activated muted block \(blockIndex)")
         }
 
+        // Clear .planned status since timer is starting
         if block.status == .planned {
             activatedBlock.status = .idle
             needsSave = true
@@ -772,46 +706,10 @@ final class BlockManager: ObservableObject {
 
         if needsSave {
             if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
-                blocks[localIdx].isMuted = activatedBlock.isMuted
                 blocks[localIdx].isActivated = activatedBlock.isActivated
                 blocks[localIdx].status = activatedBlock.status
             }
             await saveBlock(activatedBlock)
-        }
-
-        // Special handling for night blocks: auto-skip previous unused ones (today only)
-        guard nightBlocksRange.contains(blockIndex) else { return }
-
-        for otherBlock in blocks {
-            guard otherBlock.date == today else { continue }  // Today's blocks only
-            guard nightBlocksRange.contains(otherBlock.blockIndex) else { continue }
-            guard otherBlock.blockIndex < blockIndex else { continue }  // Only previous blocks
-            guard otherBlock.isMuted else { continue }
-            guard otherBlock.status != .done && otherBlock.status != .skipped else { continue }
-
-            // Previous night block - check for usage
-            let hasUsage = !otherBlock.segments.isEmpty || otherBlock.usedSeconds > 0 || otherBlock.progress > 0
-
-            if hasUsage {
-                // Has data - mark as done, not skipped
-                if let localIdx = blocks.firstIndex(where: { $0.blockIndex == otherBlock.blockIndex }) {
-                    blocks[localIdx].status = .done
-                    blocks[localIdx].isMuted = false
-                    blocks[localIdx].isActivated = true
-                }
-                var doneBlock = otherBlock
-                doneBlock.status = .done
-                doneBlock.isMuted = false
-                doneBlock.isActivated = true
-                await saveBlock(doneBlock)
-                print("🌙 Auto-marked night block \(otherBlock.blockIndex) as DONE (has data)")
-            } else {
-                // No usage - skip it
-                var skippedBlock = otherBlock
-                skippedBlock.status = .skipped
-                await saveBlock(skippedBlock)
-                print("🌙 Auto-skipped unused night block \(otherBlock.blockIndex)")
-            }
         }
     }
 
@@ -823,9 +721,8 @@ final class BlockManager: ObservableObject {
         print("🔄 Resetting all blocks for \(today)")
 
         for block in blocks where block.date == today {
-            guard !block.isMuted else { continue }
-
             var resetBlock = block
+            resetBlock.isActivated = false  // Reset activation state (shows moon again in Night segment)
             resetBlock.status = .idle
             resetBlock.progress = 0
             resetBlock.breakProgress = 0
@@ -856,19 +753,12 @@ final class BlockManager: ObservableObject {
     }
 
     private func createEmptyBlock(index: Int, date: String) -> Block {
-        // Check if this is a night block (before dayStartHour) and if sleep blocks should be locked
-        // The setting is confusingly named "autoActivateSleepBlocks" but the UI says "Keep sleep blocks locked"
-        // When toggle is ON (true), sleep blocks should be muted (locked)
-        // Default is true (keep locked)
-        let keepSleepBlocksLocked = UserDefaults.standard.object(forKey: "autoActivateSleepBlocks") as? Bool ?? true
-        let shouldMute = isNightBlock(index) && keepSleepBlocksLocked
-
         return Block(
             id: UUID().uuidString,
             userId: "",
             date: date,
             blockIndex: index,
-            isMuted: shouldMute,
+            isMuted: false,
             isActivated: false,
             category: nil,
             label: nil,
