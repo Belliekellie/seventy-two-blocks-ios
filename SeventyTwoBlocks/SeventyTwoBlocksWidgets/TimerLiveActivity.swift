@@ -8,27 +8,31 @@ struct TimerLiveActivity: Widget {
             // Lock screen banner view
             // Use TimelineView to re-evaluate at key transition times
             // Include Date() to ensure correct rendering for current state (not just future dates)
+            // Includes all 3 blocks to match check-in limit
             TimelineView(.explicit([
                 Date(),
                 context.state.timerEndAt,
                 context.state.autoContinueEndAt,
                 context.state.nextBlockTimerEndAt,
-                context.state.nextBlockAutoContinueEndAt
+                context.state.nextBlockAutoContinueEndAt,
+                context.state.thirdBlockTimerEndAt,
+                context.state.thirdBlockAutoContinueEndAt
             ].compactMap { $0 })) { timeline in
                 let now = timeline.date
                 let state = context.state
 
-                // Determine which phase we're in
-                // Check isAutoContinue flag FIRST - when app updates state for auto-continue,
-                // this flag is set and we should show auto-continue regardless of time comparisons
+                // Determine which phase we're in (6 phases for 3 blocks)
+                // Check isAutoContinue flag FIRST - when app updates state for grace period,
+                // this flag is set and we should show that countdown regardless of time comparisons
                 let currentBlockExpired = now >= state.timerEndAt
                 let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? false
                 let nextBlockExpired = state.nextBlockTimerEndAt.map { now >= $0 } ?? false
                 let nextAutoContinueExpired = state.nextBlockAutoContinueEndAt.map { now >= $0 } ?? false
+                let thirdBlockExpired = state.thirdBlockTimerEndAt.map { now >= $0 } ?? false
+                let thirdAutoContinueExpired = state.thirdBlockAutoContinueEndAt.map { now >= $0 } ?? false
 
                 if state.isAutoContinue && !autoContinueExpired {
-                    // App explicitly set auto-continue mode - show auto-continue countdown
-                    // Only while countdown is still active (not expired)
+                    // App explicitly set auto-continue/grace period mode
                     AutoContinueBannerView(context: context, timerExpired: true)
                         .padding(16)
                         .activityBackgroundTint(Color.green.opacity(0.15))
@@ -38,25 +42,35 @@ struct TimerLiveActivity: Widget {
                         .padding(16)
                         .activityBackgroundTint((state.isBreak ? Color.red : Color.fromHSL(state.categoryColor)).opacity(0.15))
                 } else if !autoContinueExpired {
-                    // Phase 2: Auto-continue countdown
+                    // Phase 2: Auto-continue countdown (block 1 → 2)
                     AutoContinueBannerView(context: context, timerExpired: true)
                         .padding(16)
                         .activityBackgroundTint(Color.green.opacity(0.15))
                 } else if let nextBlockEnd = state.nextBlockTimerEndAt, !nextBlockExpired {
-                    // Phase 3: Next block running
-                    NextBlockBannerView(context: context, nextBlockEndAt: nextBlockEnd)
+                    // Phase 3: Second block running
+                    NextBlockBannerView(context: context, nextBlockEndAt: nextBlockEnd, blockNum: state.nextBlockDisplayNumber)
                         .padding(16)
                         .activityBackgroundTint(Color.fromHSL(state.categoryColor).opacity(0.15))
                 } else if let nextAutoEnd = state.nextBlockAutoContinueEndAt, !nextAutoContinueExpired {
-                    // Phase 4: Next block's auto-continue countdown
-                    NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: nextAutoEnd)
+                    // Phase 4: Auto-continue countdown (block 2 → 3)
+                    NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: nextAutoEnd, blockNum: state.nextBlockDisplayNumber)
+                        .padding(16)
+                        .activityBackgroundTint(Color.green.opacity(0.15))
+                } else if let thirdBlockEnd = state.thirdBlockTimerEndAt, !thirdBlockExpired {
+                    // Phase 5: Third block running
+                    NextBlockBannerView(context: context, nextBlockEndAt: thirdBlockEnd, blockNum: state.thirdBlockDisplayNumber)
+                        .padding(16)
+                        .activityBackgroundTint(Color.fromHSL(state.categoryColor).opacity(0.15))
+                } else if let thirdAutoEnd = state.thirdBlockAutoContinueEndAt, !thirdAutoContinueExpired {
+                    // Phase 6: Auto-continue countdown (block 3 → check-in)
+                    NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: thirdAutoEnd, blockNum: state.thirdBlockDisplayNumber)
                         .padding(16)
                         .activityBackgroundTint(Color.green.opacity(0.15))
                 } else {
-                    // Phase 5: All expired - show completion
-                    AutoContinueBannerView(context: context, timerExpired: true)
+                    // Phase 7: All expired - check-in limit reached, waiting for user
+                    CheckInBannerView(context: context)
                         .padding(16)
-                        .activityBackgroundTint(Color.green.opacity(0.15))
+                        .activityBackgroundTint(Color.orange.opacity(0.15))
                 }
             }
         } dynamicIsland: { context in
@@ -284,13 +298,14 @@ struct AutoContinueBannerView: View {
 struct NextBlockBannerView: View {
     let context: ActivityViewContext<TimerActivityAttributes>
     let nextBlockEndAt: Date
+    var blockNum: Int? = nil  // Optional - uses nextBlockDisplayNumber if nil
 
     var body: some View {
         VStack(spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    if let nextNum = context.state.nextBlockDisplayNumber {
-                        Text("BLOCK \(nextNum)")
+                    if let num = blockNum ?? context.state.nextBlockDisplayNumber {
+                        Text("BLOCK \(num)")
                             .font(.system(size: 16, weight: .bold, design: .monospaced))
                     } else {
                         Text("NEXT BLOCK")
@@ -330,13 +345,14 @@ struct NextBlockBannerView: View {
 struct NextBlockAutoContinueBannerView: View {
     let context: ActivityViewContext<TimerActivityAttributes>
     let autoContinueEndAt: Date
+    var blockNum: Int? = nil  // Optional - uses nextBlockDisplayNumber if nil
 
     var body: some View {
         VStack(spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    if let nextNum = context.state.nextBlockDisplayNumber {
-                        Text("BLOCK \(nextNum)")
+                    if let num = blockNum ?? context.state.nextBlockDisplayNumber {
+                        Text("BLOCK \(num)")
                             .font(.system(size: 16, weight: .bold, design: .monospaced))
                     } else {
                         Text("BLOCK")
@@ -359,6 +375,39 @@ struct NextBlockAutoContinueBannerView: View {
                     Text("AUTO-CONTINUE")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.green)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Check-In Banner View (shown when 3-block limit reached)
+
+struct CheckInBannerView: View {
+    let context: ActivityViewContext<TimerActivityAttributes>
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("STILL THERE?")
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+
+                    Text("3 blocks completed")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(.orange)
+
+                    Text("TAP TO CONTINUE")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.orange)
                 }
             }
         }

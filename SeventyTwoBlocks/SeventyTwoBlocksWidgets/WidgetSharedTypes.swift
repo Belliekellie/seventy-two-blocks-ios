@@ -105,6 +105,12 @@ struct TimerActivityAttributes: ActivityAttributes {
         let nextBlockDisplayNumber: Int?
         let nextBlockTimerEndAt: Date?
         let nextBlockAutoContinueEndAt: Date?
+
+        // Third block info (to match 3-block check-in limit)
+        let thirdBlockIndex: Int?
+        let thirdBlockDisplayNumber: Int?
+        let thirdBlockTimerEndAt: Date?
+        let thirdBlockAutoContinueEndAt: Date?
     }
 }
 

@@ -20,6 +20,11 @@ final class WidgetDataProvider {
     private var cachedNextBlockDisplayNumber: Int?
     private var cachedNextBlockTimerEndAt: Date?
     private var cachedNextBlockAutoContinueEndAt: Date?
+    // Third block cache (to match 3-block check-in limit)
+    private var cachedThirdBlockIndex: Int?
+    private var cachedThirdBlockDisplayNumber: Int?
+    private var cachedThirdBlockTimerEndAt: Date?
+    private var cachedThirdBlockAutoContinueEndAt: Date?
     #endif
 
     private init() {
@@ -151,7 +156,11 @@ final class WidgetDataProvider {
                 nextBlockIndex: nil,
                 nextBlockDisplayNumber: nil,
                 nextBlockTimerEndAt: nil,
-                nextBlockAutoContinueEndAt: nil
+                nextBlockAutoContinueEndAt: nil,
+                thirdBlockIndex: nil,
+                thirdBlockDisplayNumber: nil,
+                thirdBlockTimerEndAt: nil,
+                thirdBlockAutoContinueEndAt: nil
             )
             // Use staleDate in the past to force immediate dismissal
             let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
@@ -188,12 +197,22 @@ final class WidgetDataProvider {
         let nextBlockAutoContinueEndAt = nextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
         let nextBlockDisplayNum = nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil
 
+        // Calculate third block info (to match 3-block check-in limit)
+        let thirdBlockIndex = blockIndex + 2
+        let thirdBlockTimerEndAt = thirdBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: thirdBlockIndex) : nil
+        let thirdBlockAutoContinueEndAt = thirdBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+        let thirdBlockDisplayNum = thirdBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(thirdBlockIndex, dayStartHour: dayStartHour) : nil
+
         // Cache all values so updateLiveActivity can preserve them
         cachedAutoContinueEndAt = autoContinueEndAt
         cachedNextBlockIndex = nextBlockIndex < 72 ? nextBlockIndex : nil
         cachedNextBlockDisplayNumber = nextBlockDisplayNum
         cachedNextBlockTimerEndAt = nextBlockTimerEndAt
         cachedNextBlockAutoContinueEndAt = nextBlockAutoContinueEndAt
+        cachedThirdBlockIndex = thirdBlockIndex < 72 ? thirdBlockIndex : nil
+        cachedThirdBlockDisplayNumber = thirdBlockDisplayNum
+        cachedThirdBlockTimerEndAt = thirdBlockTimerEndAt
+        cachedThirdBlockAutoContinueEndAt = thirdBlockAutoContinueEndAt
 
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
@@ -208,11 +227,15 @@ final class WidgetDataProvider {
             nextBlockIndex: cachedNextBlockIndex,
             nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
             nextBlockTimerEndAt: nextBlockTimerEndAt,
-            nextBlockAutoContinueEndAt: nextBlockAutoContinueEndAt
+            nextBlockAutoContinueEndAt: nextBlockAutoContinueEndAt,
+            thirdBlockIndex: cachedThirdBlockIndex,
+            thirdBlockDisplayNumber: cachedThirdBlockDisplayNumber,
+            thirdBlockTimerEndAt: thirdBlockTimerEndAt,
+            thirdBlockAutoContinueEndAt: thirdBlockAutoContinueEndAt
         )
 
-        // Stale date extends to cover next block's auto-continue too
-        let staleDate = nextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
+        // Stale date extends to cover third block's auto-continue (matches 3-block check-in limit)
+        let staleDate = thirdBlockAutoContinueEndAt ?? nextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         do {
@@ -254,11 +277,15 @@ final class WidgetDataProvider {
             nextBlockIndex: cachedNextBlockIndex,
             nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
             nextBlockTimerEndAt: cachedNextBlockTimerEndAt,
-            nextBlockAutoContinueEndAt: cachedNextBlockAutoContinueEndAt
+            nextBlockAutoContinueEndAt: cachedNextBlockAutoContinueEndAt,
+            thirdBlockIndex: cachedThirdBlockIndex,
+            thirdBlockDisplayNumber: cachedThirdBlockDisplayNumber,
+            thirdBlockTimerEndAt: cachedThirdBlockTimerEndAt,
+            thirdBlockAutoContinueEndAt: cachedThirdBlockAutoContinueEndAt
         )
 
-        // Stale date should extend to cover all phases
-        let staleDate = cachedNextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
+        // Stale date should extend to cover all phases (3 blocks to match check-in limit)
+        let staleDate = cachedThirdBlockAutoContinueEndAt ?? cachedNextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         Task {
@@ -285,7 +312,11 @@ final class WidgetDataProvider {
             nextBlockIndex: nil,
             nextBlockDisplayNumber: nil,
             nextBlockTimerEndAt: nil,
-            nextBlockAutoContinueEndAt: nil
+            nextBlockAutoContinueEndAt: nil,
+            thirdBlockIndex: nil,
+            thirdBlockDisplayNumber: nil,
+            thirdBlockTimerEndAt: nil,
+            thirdBlockAutoContinueEndAt: nil
         )
 
         let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
@@ -312,7 +343,11 @@ final class WidgetDataProvider {
                 nextBlockIndex: nil,
                 nextBlockDisplayNumber: nil,
                 nextBlockTimerEndAt: nil,
-                nextBlockAutoContinueEndAt: nil
+                nextBlockAutoContinueEndAt: nil,
+                thirdBlockIndex: nil,
+                thirdBlockDisplayNumber: nil,
+                thirdBlockTimerEndAt: nil,
+                thirdBlockAutoContinueEndAt: nil
             )
             let content = ActivityContent(state: finalState, staleDate: nil)
 
@@ -328,6 +363,10 @@ final class WidgetDataProvider {
         cachedNextBlockDisplayNumber = nil
         cachedNextBlockTimerEndAt = nil
         cachedNextBlockAutoContinueEndAt = nil
+        cachedThirdBlockIndex = nil
+        cachedThirdBlockDisplayNumber = nil
+        cachedThirdBlockTimerEndAt = nil
+        cachedThirdBlockAutoContinueEndAt = nil
         currentActivity = nil
     }
     #else
