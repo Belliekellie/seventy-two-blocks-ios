@@ -917,20 +917,20 @@ struct BlockItemView: View {
                         let totalLiveSeconds = liveSegs.reduce(0) { $0 + $1.seconds }
                         let totalSeconds = totalPreviousSeconds + totalLiveSeconds
 
-                        // Apply minimum fill only to the FIRST segment of the block (when no previous fill exists)
-                        // This ensures the initial sliver is visible, but subsequent segments build from there naturally
+                        // Apply minimum fill only to the FIRST segment when block just started
+                        // Subsequent segments use proportional width but offsets are calculated correctly
                         let isBlockStart = totalPreviousSeconds == 0
                         let applyMinFillToFirst = isBlockStart && totalSeconds < 60
 
-                        // Pre-compute segment widths and offsets to handle min fill correctly
-                        // This ensures subsequent segments start AFTER any min fill applied to the first segment
+                        // Pre-compute segment widths and offsets
+                        // Each segment starts where the previous one ends (no overlap)
                         let segmentData: [(segment: BlockSegment, offset: CGFloat, width: CGFloat)] = {
                             var result: [(segment: BlockSegment, offset: CGFloat, width: CGFloat)] = []
                             var currentOffset = liveStartOffset * visualScale * geo.size.width
 
                             for (index, segment) in liveSegs.enumerated() {
                                 let rawWidth = geo.size.width * min(Double(segment.seconds) * timerManager.sessionScaleFactor * visualScale, 1.0)
-                                // Apply minimum 4px fill only to the very first segment of the block
+                                // Only first segment of fresh block gets minimum 4px fill
                                 let isFirstSegment = index == 0 && isBlockStart
                                 let fillWidth = (isFirstSegment && applyMinFillToFirst) ? max(4, rawWidth) : rawWidth
 
@@ -973,7 +973,6 @@ struct BlockItemView: View {
                             : 1.0 / 1200.0
 
                         // Apply minimum fill only to the FIRST segment if total is very short
-                        // This ensures visible fill even when stopped early, without overlapping issues
                         let applyMinFillToFirst = totalSegmentSeconds < 60
 
                         // Pre-compute segment widths and offsets to handle min fill correctly
@@ -983,7 +982,7 @@ struct BlockItemView: View {
 
                             for (index, segment) in segments.enumerated() {
                                 let rawWidth = geo.size.width * min(Double(segment.seconds) * scaleFactor, 1.0)
-                                // Apply minimum 4px fill only to the very first segment
+                                // Only first segment gets minimum 4px fill
                                 let isFirstSegment = index == 0
                                 let fillWidth = (isFirstSegment && applyMinFillToFirst) ? max(4, rawWidth) : rawWidth
 
