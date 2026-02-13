@@ -14,6 +14,8 @@ final class WidgetDataProvider {
 
     #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     private var currentActivity: Activity<TimerActivityAttributes>?
+    // Cache autoContinueEndAt so updateLiveActivity can reuse it
+    private var cachedAutoContinueEndAt: Date?
     #endif
 
     private init() {
@@ -127,36 +129,12 @@ final class WidgetDataProvider {
     ) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        // End ALL existing activities BEFORE starting new one
-        // This prevents duplicate activities showing in Dynamic Island (race condition fix)
+        // Capture existing activities to end AFTER we successfully create the new one
+        // This prevents a gap where no activity exists (which would cause the Live Activity to disappear)
         let existingActivities = Activity<TimerActivityAttributes>.activities
         if !existingActivities.isEmpty {
-            print("📱 Found \(existingActivities.count) existing Live Activities, ending them before starting new one...")
-            let finalState = TimerActivityAttributes.ContentState(
-                timerEndAt: Date(),
-                timerStartedAt: Date(),
-                category: nil,
-                categoryColor: nil,
-                label: nil,
-                progress: 1.0,
-                isBreak: false,
-                isAutoContinue: false,
-                autoContinueEndAt: nil,
-                nextBlockIndex: nil,
-                nextBlockDisplayNumber: nil,
-                nextBlockTimerEndAt: nil,
-                nextBlockAutoContinueEndAt: nil
-            )
-            // Use staleDate in the past to force immediate dismissal
-            let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
-
-            // End all activities sequentially (typically only 1-2 at most)
-            for activity in existingActivities {
-                await activity.end(content, dismissalPolicy: .immediate)
-                print("📱 Ended activity: \(activity.id)")
-            }
+            print("📱 Found \(existingActivities.count) existing Live Activities, will end after creating new one")
         }
-        currentActivity = nil
 
         // Get dayStartHour for correct display number
         let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
@@ -171,8 +149,7 @@ final class WidgetDataProvider {
 
         // Pre-set autoContinueEndAt so the Live Activity can automatically transition
         // to showing the auto-continue countdown when the block timer expires,
-        // even when the app is backgrounded. The widget checks (timerExpired && autoContinueEndAt != nil)
-        // before showing auto-continue UI, so this won't cause premature display.
+        // even when the app is backgrounded.
         let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
         let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
 
@@ -180,6 +157,9 @@ final class WidgetDataProvider {
         let nextBlockIndex = blockIndex + 1
         let nextBlockTimerEndAt = nextBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: nextBlockIndex) : nil
         let nextBlockAutoContinueEndAt = nextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+
+        // Cache autoContinueEndAt so updateLiveActivity can reuse it
+        cachedAutoContinueEndAt = autoContinueEndAt
 
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
@@ -197,8 +177,14 @@ final class WidgetDataProvider {
             nextBlockAutoContinueEndAt: nextBlockAutoContinueEndAt
         )
 
-        // Stale date extends to cover next block's auto-continue too
-        let staleDate = nextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
+        // Stale date should be well into the future to keep the activity alive
+        let now = Date()
+        var staleDate = nextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
+        // Ensure staleDate is at least 2 hours in the future
+        let minStaleDate = now.addingTimeInterval(7200)
+        if staleDate < minStaleDate {
+            staleDate = minStaleDate
+        }
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         do {
@@ -209,6 +195,31 @@ final class WidgetDataProvider {
             )
             currentActivity = activity
             print("📱 Live Activity started for block \(blockIndex)")
+
+            // NOW end the old activities (after new one is successfully created)
+            if !existingActivities.isEmpty {
+                print("📱 Ending \(existingActivities.count) old Live Activities...")
+                let finalState = TimerActivityAttributes.ContentState(
+                    timerEndAt: Date(),
+                    timerStartedAt: Date(),
+                    category: nil,
+                    categoryColor: nil,
+                    label: nil,
+                    progress: 1.0,
+                    isBreak: false,
+                    isAutoContinue: false,
+                    autoContinueEndAt: nil,
+                    nextBlockIndex: nil,
+                    nextBlockDisplayNumber: nil,
+                    nextBlockTimerEndAt: nil,
+                    nextBlockAutoContinueEndAt: nil
+                )
+                let endContent = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
+                for oldActivity in existingActivities {
+                    await oldActivity.end(endContent, dismissalPolicy: .immediate)
+                    print("📱 Ended old activity: \(oldActivity.id)")
+                }
+            }
         } catch {
             print("📱 Failed to start Live Activity: \(error)")
         }
@@ -225,7 +236,8 @@ final class WidgetDataProvider {
     ) {
         guard let activity = currentActivity else { return }
 
-        // Don't pre-set autoContinueEndAt - only set via updateLiveActivityForAutoContinue
+        // Reuse the cached autoContinueEndAt from startLiveActivity
+        // This ensures the Live Activity can still transition to auto-continue when backgrounded
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -235,14 +247,21 @@ final class WidgetDataProvider {
             progress: progress,
             isBreak: isBreak,
             isAutoContinue: false,
-            autoContinueEndAt: nil,
+            autoContinueEndAt: cachedAutoContinueEndAt,
             nextBlockIndex: nil,
             nextBlockDisplayNumber: nil,
             nextBlockTimerEndAt: nil,
             nextBlockAutoContinueEndAt: nil
         )
 
-        let content = ActivityContent(state: state, staleDate: timerEndAt.addingTimeInterval(120))
+        // Stale date should be well into the future
+        let now = Date()
+        var staleDate = timerEndAt.addingTimeInterval(120)
+        let minStaleDate = now.addingTimeInterval(7200)
+        if staleDate < minStaleDate {
+            staleDate = minStaleDate
+        }
+        let content = ActivityContent(state: state, staleDate: staleDate)
 
         Task {
             await activity.update(content)
@@ -279,6 +298,9 @@ final class WidgetDataProvider {
     }
 
     func endLiveActivity() {
+        // Clear the cache
+        cachedAutoContinueEndAt = nil
+
         // End ALL running activities of this type, not just the one we have a reference to
         // This handles orphaned activities from app termination/restart or race conditions
         Task {
