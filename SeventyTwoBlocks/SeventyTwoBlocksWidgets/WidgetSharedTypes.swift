@@ -100,6 +100,12 @@ struct TimerActivityAttributes: ActivityAttributes {
         let isAutoContinue: Bool      // true when showing auto-continue countdown
         let autoContinueEndAt: Date?  // when auto-continue will fire
 
+        // Current block info (needed when reusing existing activity for new block)
+        let currentBlockIndex: Int?
+        let currentBlockDisplayNumber: Int?
+        let currentBlockStartTime: String?  // "08:00"
+        let currentBlockEndTime: String?    // "08:20"
+
         // Next block info (for continuous background display)
         let nextBlockIndex: Int?
         let nextBlockDisplayNumber: Int?

@@ -56,19 +56,13 @@ struct BlockSheetView: View {
         blockManager.favoriteLabels
     }
 
-    // Category-specific labels
+    // Category-specific labels (no debug prints - called frequently during render)
     private var categoryLabels: [String] {
-        guard let categoryId = category else {
-            print("📋 categoryLabels: no category selected")
+        guard let categoryId = category,
+              let cat = blockManager.categories.first(where: { $0.id == categoryId }) else {
             return []
         }
-        guard let cat = blockManager.categories.first(where: { $0.id == categoryId }) else {
-            print("📋 categoryLabels: category '\(categoryId)' not found in \(blockManager.categories.map { $0.id })")
-            return []
-        }
-        let labels = (cat.labels ?? []).filter { !favoriteLabels.contains($0) }
-        print("📋 categoryLabels for '\(categoryId)': \(labels) (raw: \(cat.labels ?? []))")
-        return labels
+        return (cat.labels ?? []).filter { !favoriteLabels.contains($0) }
     }
 
     private var blockTime: String {

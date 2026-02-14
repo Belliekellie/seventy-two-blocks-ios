@@ -8,6 +8,7 @@ struct TimerCompleteDialog: View {
     let timerEndedAt: Date    // When the timer actually completed (for epoch-based countdown)
     let isBreakMode: Bool     // Whether the timer was in break mode when the block ended
     let suppressAutoContinue: Bool
+    let isBackgroundCompletion: Bool  // True if timer completed while app was backgrounded (suppress sound)
     let onCheckIn: (() -> Void)?
     let onContinue: () -> Void       // Primary: continue same mode (work or break)
     let onAutoContinue: () -> Void   // Countdown expired: continue same mode
@@ -125,7 +126,10 @@ struct TimerCompleteDialog: View {
             } else if !disableAutoContinue {
                 startCountdown()
             }
-            AudioManager.shared.playCompletionBell()
+            // Only play sound if user was watching (not a background completion)
+            if !isBackgroundCompletion {
+                AudioManager.shared.playCompletionBell()
+            }
         }
         .onDisappear {
             stopCountdown()
@@ -378,6 +382,7 @@ struct TimerCompleteDialog: View {
             timerEndedAt: Date(),
             isBreakMode: false,
             suppressAutoContinue: false,
+            isBackgroundCompletion: false,
             onCheckIn: nil,
             onContinue: {},
             onAutoContinue: {},
@@ -404,6 +409,7 @@ struct TimerCompleteDialog: View {
             timerEndedAt: Date(),
             isBreakMode: true,
             suppressAutoContinue: false,
+            isBackgroundCompletion: false,
             onCheckIn: nil,
             onContinue: {},
             onAutoContinue: {},
@@ -430,6 +436,7 @@ struct TimerCompleteDialog: View {
             timerEndedAt: Date(),
             isBreakMode: false,
             suppressAutoContinue: false,
+            isBackgroundCompletion: false,
             onCheckIn: nil,
             onContinue: {},
             onAutoContinue: {},
@@ -456,6 +463,7 @@ struct TimerCompleteDialog: View {
             timerEndedAt: Date(),
             isBreakMode: false,
             suppressAutoContinue: true,
+            isBackgroundCompletion: false,
             onCheckIn: {},
             onContinue: {},
             onAutoContinue: {},

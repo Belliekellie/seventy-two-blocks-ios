@@ -142,6 +142,7 @@ struct MainView: View {
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
                     isBreakMode: timerManager.isBreak,
                     suppressAutoContinue: shouldSuppressAutoContinue,
+                    isBackgroundCompletion: false,
                     onCheckIn: { timerManager.resetInteractionCounter() },
                     onContinue: {
                         timerManager.resetInteractionCounter()

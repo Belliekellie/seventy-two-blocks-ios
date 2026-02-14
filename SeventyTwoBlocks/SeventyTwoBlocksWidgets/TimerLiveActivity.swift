@@ -9,69 +9,74 @@ struct TimerLiveActivity: Widget {
             // Use TimelineView to re-evaluate at key transition times
             // Include Date() to ensure correct rendering for current state (not just future dates)
             // Includes all 3 blocks to match check-in limit
-            TimelineView(.explicit([
-                Date(),
-                context.state.timerEndAt,
-                context.state.autoContinueEndAt,
-                context.state.nextBlockTimerEndAt,
-                context.state.nextBlockAutoContinueEndAt,
-                context.state.thirdBlockTimerEndAt,
-                context.state.thirdBlockAutoContinueEndAt
-            ].compactMap { $0 })) { timeline in
-                let now = timeline.date
+            // Use periodic schedule that fires every second near transitions
+            // .explicit() was NOT firing at scheduled times, causing the view to never update
+            // .periodic() should force regular re-renders so phase detection works
+            TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                // Use real current time for phase detection
+                let realNow = Date()
                 let state = context.state
 
                 // Determine which phase we're in (6 phases for 3 blocks)
-                // Check isAutoContinue flag FIRST - when app updates state for grace period,
-                // this flag is set and we should show that countdown regardless of time comparisons
-                let currentBlockExpired = now >= state.timerEndAt
-                let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? false
-                let nextBlockExpired = state.nextBlockTimerEndAt.map { now >= $0 } ?? false
-                let nextAutoContinueExpired = state.nextBlockAutoContinueEndAt.map { now >= $0 } ?? false
-                let thirdBlockExpired = state.thirdBlockTimerEndAt.map { now >= $0 } ?? false
-                let thirdAutoContinueExpired = state.thirdBlockAutoContinueEndAt.map { now >= $0 } ?? false
+                // Use REAL current time for phase detection, not timeline.date
+                let currentBlockExpired = realNow >= state.timerEndAt
+                let autoContinueExpired = state.autoContinueEndAt.map { realNow >= $0 } ?? false
+                let nextBlockExpired = state.nextBlockTimerEndAt.map { realNow >= $0 } ?? false
+                let nextAutoContinueExpired = state.nextBlockAutoContinueEndAt.map { realNow >= $0 } ?? false
+                let thirdBlockExpired = state.thirdBlockTimerEndAt.map { realNow >= $0 } ?? false
+                let thirdAutoContinueExpired = state.thirdBlockAutoContinueEndAt.map { realNow >= $0 } ?? false
 
-                if state.isAutoContinue && !autoContinueExpired {
-                    // App explicitly set auto-continue/grace period mode
-                    AutoContinueBannerView(context: context, timerExpired: true)
-                        .padding(16)
-                        .activityBackgroundTint(Color.green.opacity(0.15))
-                } else if !currentBlockExpired {
-                    // Phase 1: Current block running
-                    LockScreenBannerView(context: context)
-                        .padding(16)
-                        .activityBackgroundTint((state.isBreak ? Color.red : Color.fromHSL(state.categoryColor)).opacity(0.15))
-                } else if !autoContinueExpired {
-                    // Phase 2: Auto-continue countdown (block 1 → 2)
-                    AutoContinueBannerView(context: context, timerExpired: true)
-                        .padding(16)
-                        .activityBackgroundTint(Color.green.opacity(0.15))
-                } else if let nextBlockEnd = state.nextBlockTimerEndAt, !nextBlockExpired {
-                    // Phase 3: Second block running
-                    NextBlockBannerView(context: context, nextBlockEndAt: nextBlockEnd, blockNum: state.nextBlockDisplayNumber)
-                        .padding(16)
-                        .activityBackgroundTint(Color.fromHSL(state.categoryColor).opacity(0.15))
-                } else if let nextAutoEnd = state.nextBlockAutoContinueEndAt, !nextAutoContinueExpired {
-                    // Phase 4: Auto-continue countdown (block 2 → 3)
-                    NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: nextAutoEnd, blockNum: state.nextBlockDisplayNumber)
-                        .padding(16)
-                        .activityBackgroundTint(Color.green.opacity(0.15))
-                } else if let thirdBlockEnd = state.thirdBlockTimerEndAt, !thirdBlockExpired {
-                    // Phase 5: Third block running
-                    NextBlockBannerView(context: context, nextBlockEndAt: thirdBlockEnd, blockNum: state.thirdBlockDisplayNumber)
-                        .padding(16)
-                        .activityBackgroundTint(Color.fromHSL(state.categoryColor).opacity(0.15))
-                } else if let thirdAutoEnd = state.thirdBlockAutoContinueEndAt, !thirdAutoContinueExpired {
-                    // Phase 6: Auto-continue countdown (block 3 → check-in)
-                    NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: thirdAutoEnd, blockNum: state.thirdBlockDisplayNumber)
-                        .padding(16)
-                        .activityBackgroundTint(Color.green.opacity(0.15))
-                } else {
-                    // Phase 7: All expired - check-in limit reached, waiting for user
-                    CheckInBannerView(context: context)
-                        .padding(16)
-                        .activityBackgroundTint(Color.orange.opacity(0.15))
+                // Calculate phase number for debug
+                let phase: Int = {
+                    if state.isAutoContinue && !autoContinueExpired { return 0 }
+                    if !currentBlockExpired { return 1 }
+                    if !autoContinueExpired { return 2 }
+                    if state.nextBlockTimerEndAt != nil && !nextBlockExpired { return 3 }
+                    if state.nextBlockAutoContinueEndAt != nil && !nextAutoContinueExpired { return 4 }
+                    if state.thirdBlockTimerEndAt != nil && !thirdBlockExpired { return 5 }
+                    if state.thirdBlockAutoContinueEndAt != nil && !thirdAutoContinueExpired { return 6 }
+                    return 7
+                }()
+
+                // Calculate seconds until timerEndAt for debug
+                let secsToEnd = Int(state.timerEndAt.timeIntervalSince(realNow))
+
+                VStack(spacing: 4) {
+                    // Debug info - show seconds to end (negative = past)
+                    Text("P\(phase) \(secsToEnd)s exp:\(currentBlockExpired ? "Y" : "N")")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    // Actual content based on phase
+                    if state.isAutoContinue && !autoContinueExpired {
+                        AutoContinueBannerView(context: context, timerExpired: true)
+                    } else if !currentBlockExpired {
+                        LockScreenBannerView(context: context)
+                    } else if !autoContinueExpired {
+                        AutoContinueBannerView(context: context, timerExpired: true)
+                    } else if let nextBlockEnd = state.nextBlockTimerEndAt, !nextBlockExpired {
+                        NextBlockBannerView(context: context, nextBlockEndAt: nextBlockEnd, blockNum: state.nextBlockDisplayNumber)
+                    } else if let nextAutoEnd = state.nextBlockAutoContinueEndAt, !nextAutoContinueExpired {
+                        NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: nextAutoEnd, blockNum: state.nextBlockDisplayNumber)
+                    } else if let thirdBlockEnd = state.thirdBlockTimerEndAt, !thirdBlockExpired {
+                        NextBlockBannerView(context: context, nextBlockEndAt: thirdBlockEnd, blockNum: state.thirdBlockDisplayNumber)
+                    } else if let thirdAutoEnd = state.thirdBlockAutoContinueEndAt, !thirdAutoContinueExpired {
+                        NextBlockAutoContinueBannerView(context: context, autoContinueEndAt: thirdAutoEnd, blockNum: state.thirdBlockDisplayNumber)
+                    } else {
+                        CheckInBannerView(context: context)
+                    }
                 }
+                .padding(16)
+                .activityBackgroundTint({
+                    if state.isAutoContinue && !autoContinueExpired { return Color.green.opacity(0.15) }
+                    if !currentBlockExpired { return (state.isBreak ? Color.red : Color.fromHSL(state.categoryColor)).opacity(0.15) }
+                    if !autoContinueExpired { return Color.green.opacity(0.15) }
+                    if state.nextBlockTimerEndAt != nil && !nextBlockExpired { return Color.fromHSL(state.categoryColor).opacity(0.15) }
+                    if state.nextBlockAutoContinueEndAt != nil && !nextAutoContinueExpired { return Color.green.opacity(0.15) }
+                    if state.thirdBlockTimerEndAt != nil && !thirdBlockExpired { return Color.fromHSL(state.categoryColor).opacity(0.15) }
+                    if state.thirdBlockAutoContinueEndAt != nil && !thirdAutoContinueExpired { return Color.green.opacity(0.15) }
+                    return Color.orange.opacity(0.15)
+                }())
             }
         } dynamicIsland: { context in
             DynamicIsland {

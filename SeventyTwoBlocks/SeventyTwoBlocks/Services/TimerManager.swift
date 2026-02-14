@@ -29,6 +29,7 @@ final class TimerManager: ObservableObject {
     @Published var showBreakComplete = false
     @Published var showPausedExpiry = false  // Block time ended while paused
     @Published var timerCompletedAt: Date?
+    @Published var isBackgroundCompletion = false  // True if timer completed while app was backgrounded
 
     // Check-in tracking: counts consecutive auto-continues without user interaction
     @Published var blocksSinceLastInteraction: Int = 0
@@ -723,6 +724,14 @@ final class TimerManager: ObservableObject {
         // Record completion time for epoch-based auto-continue countdown
         // Uses actual end time, not current time, so backgrounded duration is accounted for
         timerCompletedAt = actualCompletionTime
+
+        // Detect if this was a background completion (timer expired while app was suspended)
+        // If more than 5 seconds have passed since actual completion, user wasn't watching
+        let timeSinceCompletion = Date().timeIntervalSince(actualCompletionTime)
+        isBackgroundCompletion = timeSinceCompletion > 5
+        if isBackgroundCompletion {
+            print("⏱️ Background completion detected: \(Int(timeSinceCompletion))s since block ended")
+        }
 
         // Notify widget of timer completion
         onWidgetUpdate?()

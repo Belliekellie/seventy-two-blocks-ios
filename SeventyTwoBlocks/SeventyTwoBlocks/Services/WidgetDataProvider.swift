@@ -16,6 +16,12 @@ final class WidgetDataProvider {
     private var currentActivity: Activity<TimerActivityAttributes>?
     // Cached values from startLiveActivity - preserved during updateLiveActivity calls
     private var cachedAutoContinueEndAt: Date?
+    // Current block cache (needed when reusing existing activity)
+    private var cachedCurrentBlockIndex: Int?
+    private var cachedCurrentBlockDisplayNumber: Int?
+    private var cachedCurrentBlockStartTime: String?
+    private var cachedCurrentBlockEndTime: String?
+    // Next block cache
     private var cachedNextBlockIndex: Int?
     private var cachedNextBlockDisplayNumber: Int?
     private var cachedNextBlockTimerEndAt: Date?
@@ -153,6 +159,10 @@ final class WidgetDataProvider {
                 isBreak: false,
                 isAutoContinue: false,
                 autoContinueEndAt: nil,
+                currentBlockIndex: nil,
+                currentBlockDisplayNumber: nil,
+                currentBlockStartTime: nil,
+                currentBlockEndTime: nil,
                 nextBlockIndex: nil,
                 nextBlockDisplayNumber: nil,
                 nextBlockTimerEndAt: nil,
@@ -205,6 +215,10 @@ final class WidgetDataProvider {
 
         // Cache all values so updateLiveActivity can preserve them
         cachedAutoContinueEndAt = autoContinueEndAt
+        cachedCurrentBlockIndex = blockIndex
+        cachedCurrentBlockDisplayNumber = BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: dayStartHour)
+        cachedCurrentBlockStartTime = BlockTimeUtils.blockToTime(blockIndex)
+        cachedCurrentBlockEndTime = BlockTimeUtils.blockEndTime(blockIndex)
         cachedNextBlockIndex = nextBlockIndex < 72 ? nextBlockIndex : nil
         cachedNextBlockDisplayNumber = nextBlockDisplayNum
         cachedNextBlockTimerEndAt = nextBlockTimerEndAt
@@ -224,6 +238,10 @@ final class WidgetDataProvider {
             isBreak: isBreak,
             isAutoContinue: false,
             autoContinueEndAt: autoContinueEndAt,
+            currentBlockIndex: blockIndex,
+            currentBlockDisplayNumber: BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: dayStartHour),
+            currentBlockStartTime: BlockTimeUtils.blockToTime(blockIndex),
+            currentBlockEndTime: BlockTimeUtils.blockEndTime(blockIndex),
             nextBlockIndex: cachedNextBlockIndex,
             nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
             nextBlockTimerEndAt: nextBlockTimerEndAt,
@@ -274,6 +292,10 @@ final class WidgetDataProvider {
             isBreak: isBreak,
             isAutoContinue: false,
             autoContinueEndAt: cachedAutoContinueEndAt,
+            currentBlockIndex: cachedCurrentBlockIndex,
+            currentBlockDisplayNumber: cachedCurrentBlockDisplayNumber,
+            currentBlockStartTime: cachedCurrentBlockStartTime,
+            currentBlockEndTime: cachedCurrentBlockEndTime,
             nextBlockIndex: cachedNextBlockIndex,
             nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
             nextBlockTimerEndAt: cachedNextBlockTimerEndAt,
@@ -309,14 +331,18 @@ final class WidgetDataProvider {
             isBreak: isBreak,
             isAutoContinue: true,
             autoContinueEndAt: autoContinueEndAt,
-            nextBlockIndex: nil,
-            nextBlockDisplayNumber: nil,
-            nextBlockTimerEndAt: nil,
-            nextBlockAutoContinueEndAt: nil,
-            thirdBlockIndex: nil,
-            thirdBlockDisplayNumber: nil,
-            thirdBlockTimerEndAt: nil,
-            thirdBlockAutoContinueEndAt: nil
+            currentBlockIndex: cachedCurrentBlockIndex,
+            currentBlockDisplayNumber: cachedCurrentBlockDisplayNumber,
+            currentBlockStartTime: cachedCurrentBlockStartTime,
+            currentBlockEndTime: cachedCurrentBlockEndTime,
+            nextBlockIndex: cachedNextBlockIndex,
+            nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
+            nextBlockTimerEndAt: cachedNextBlockTimerEndAt,
+            nextBlockAutoContinueEndAt: cachedNextBlockAutoContinueEndAt,
+            thirdBlockIndex: cachedThirdBlockIndex,
+            thirdBlockDisplayNumber: cachedThirdBlockDisplayNumber,
+            thirdBlockTimerEndAt: cachedThirdBlockTimerEndAt,
+            thirdBlockAutoContinueEndAt: cachedThirdBlockAutoContinueEndAt
         )
 
         let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
@@ -340,6 +366,10 @@ final class WidgetDataProvider {
                 isBreak: false,
                 isAutoContinue: false,
                 autoContinueEndAt: nil,
+                currentBlockIndex: nil,
+                currentBlockDisplayNumber: nil,
+                currentBlockStartTime: nil,
+                currentBlockEndTime: nil,
                 nextBlockIndex: nil,
                 nextBlockDisplayNumber: nil,
                 nextBlockTimerEndAt: nil,
@@ -359,6 +389,10 @@ final class WidgetDataProvider {
         }
 
         cachedAutoContinueEndAt = nil
+        cachedCurrentBlockIndex = nil
+        cachedCurrentBlockDisplayNumber = nil
+        cachedCurrentBlockStartTime = nil
+        cachedCurrentBlockEndTime = nil
         cachedNextBlockIndex = nil
         cachedNextBlockDisplayNumber = nil
         cachedNextBlockTimerEndAt = nil
