@@ -155,7 +155,8 @@ struct MainView: View {
                         if shouldSuppressAutoContinue {
                             handleStop()
                         } else {
-                            handleContinueWork()
+                            // Skip Live Activity restart - existing activity already has next block data
+                            handleContinueWork(skipLiveActivityRestart: true)
                         }
                     },
                     onTakeBreak: {
@@ -853,7 +854,7 @@ struct MainView: View {
 
     // MARK: - Dialog Actions
 
-    private func handleContinueWork() {
+    private func handleContinueWork(skipLiveActivityRestart: Bool = false) {
         // ALWAYS continue on the CURRENT TIME block
         // The timer completed at the block boundary, so the current block IS the next one
         // If the user waited before clicking, we still go to wherever "now" is
@@ -901,14 +902,18 @@ struct MainView: View {
             existingSegments: existingSegments
         )
 
-        // Start Live Activity
-        startWidgetLiveActivity(
-            blockIndex: nextBlockIndex,
-            isBreak: wasBreak,
-            endAt: Block.blockEndDate(for: nextBlockIndex),
-            category: category,
-            label: label
-        )
+        // Start Live Activity (skip during auto-continue - existing activity handles it)
+        if !skipLiveActivityRestart {
+            startWidgetLiveActivity(
+                blockIndex: nextBlockIndex,
+                isBreak: wasBreak,
+                endAt: Block.blockEndDate(for: nextBlockIndex),
+                category: category,
+                label: label
+            )
+        } else {
+            print("📱 Skipping Live Activity restart - existing activity continues autonomously")
+        }
 
         // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
         // NOTE: flipToNextDayIfGridWrapped runs FIRST to ensure blocks are loaded for the correct day
