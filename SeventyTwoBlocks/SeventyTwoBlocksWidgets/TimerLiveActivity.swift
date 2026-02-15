@@ -92,12 +92,16 @@ struct TimerLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimelineView(.explicit([Date(), context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
-                        let now = timeline.date
-                        let timerExpired = now >= context.state.timerEndAt
-                        let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+                    TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                        let now = Date()
+                        let state = context.state
+                        let timerExpired = now >= state.timerEndAt
+                        let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? true
 
-                        if showAutoContinue, let endAt = context.state.autoContinueEndAt {
+                        // Show auto-continue only if timer expired but auto-continue hasn't
+                        let showAutoContinue = state.isAutoContinue || (timerExpired && !autoContinueExpired)
+
+                        if showAutoContinue, let endAt = state.autoContinueEndAt {
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text(endAt, style: .timer)
                                     .font(.system(size: 20, weight: .bold, design: .monospaced))
@@ -106,29 +110,40 @@ struct TimerLiveActivity: Widget {
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundStyle(.green)
                             }
-                        } else {
-                            Text(context.state.timerEndAt, style: .timer)
+                        } else if !timerExpired {
+                            Text(state.timerEndAt, style: .timer)
                                 .font(.system(size: 22, weight: .bold, design: .monospaced))
                                 .monospacedDigit()
                                 .frame(maxWidth: .infinity, alignment: .trailing)
+                        } else {
+                            // After auto-continue expired, show check-in prompt
+                            Image(systemName: "hand.tap.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.orange)
                         }
                     }
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    TimelineView(.explicit([Date(), context.state.timerEndAt])) { timeline in
-                        let now = timeline.date
-                        let timerExpired = now >= context.state.timerEndAt
-                        let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+                    TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                        let now = Date()
+                        let state = context.state
+                        let timerExpired = now >= state.timerEndAt
+                        let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? true
+                        let showAutoContinue = state.isAutoContinue || (timerExpired && !autoContinueExpired)
 
                         if showAutoContinue {
                             Text("Continuing...")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(.green)
-                        } else if let label = context.state.label ?? context.state.category {
+                        } else if timerExpired && autoContinueExpired {
+                            Text("Tap to continue")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.orange)
+                        } else if let label = state.label ?? state.category {
                             HStack(spacing: 4) {
                                 Circle()
-                                    .fill(Color.fromHSL(context.state.categoryColor))
+                                    .fill(Color.fromHSL(state.categoryColor))
                                     .frame(width: 8, height: 8)
                                 Text(label)
                                     .font(.system(size: 13, weight: .medium))
@@ -139,27 +154,43 @@ struct TimerLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    TimelineView(.explicit([Date(), context.state.timerEndAt])) { timeline in
-                        let now = timeline.date
-                        let timerExpired = now >= context.state.timerEndAt
-                        let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+                    TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                        let now = Date()
+                        let state = context.state
+                        let timerExpired = now >= state.timerEndAt
+                        let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? true
+                        let showAutoContinue = state.isAutoContinue || (timerExpired && !autoContinueExpired)
 
-                        if !showAutoContinue {
-                            // Animated progress bar
-                            ProgressView(timerInterval: context.state.timerStartedAt...context.state.timerEndAt, countsDown: false)
-                                .tint(context.state.isBreak ? .red : Color.fromHSL(context.state.categoryColor))
+                        if !timerExpired {
+                            // Animated progress bar (only while timer running)
+                            ProgressView(timerInterval: state.timerStartedAt...state.timerEndAt, countsDown: false)
+                                .tint(state.isBreak ? .red : Color.fromHSL(state.categoryColor))
                                 .labelsHidden()
                                 .padding(.top, 4)
+                        } else if showAutoContinue {
+                            // Auto-continue phase - show green bar
+                            Rectangle()
+                                .fill(Color.green)
+                                .frame(height: 4)
+                                .cornerRadius(2)
+                                .padding(.top, 4)
                         }
+                        // After auto-continue, show nothing (check-in state)
                     }
                 }
             } compactLeading: {
-                TimelineView(.explicit([Date(), context.state.timerEndAt])) { timeline in
-                    let now = timeline.date
-                    let timerExpired = now >= context.state.timerEndAt
-                    let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+                TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                    let now = Date()
+                    let state = context.state
+                    let timerExpired = now >= state.timerEndAt
+                    let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? true
+                    let showAutoContinue = state.isAutoContinue || (timerExpired && !autoContinueExpired)
 
-                    if showAutoContinue {
+                    if timerExpired && autoContinueExpired {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.orange)
+                    } else if showAutoContinue {
                         Image(systemName: "play.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(.green)
@@ -169,37 +200,51 @@ struct TimerLiveActivity: Widget {
                     }
                 }
             } compactTrailing: {
-                TimelineView(.explicit([Date(), context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
-                    let now = timeline.date
-                    let timerExpired = now >= context.state.timerEndAt
-                    let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+                TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                    let now = Date()
+                    let state = context.state
+                    let timerExpired = now >= state.timerEndAt
+                    let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? true
+                    let showAutoContinue = state.isAutoContinue || (timerExpired && !autoContinueExpired)
 
-                    if showAutoContinue, let endAt = context.state.autoContinueEndAt {
+                    if showAutoContinue, let endAt = state.autoContinueEndAt {
                         Text(endAt, style: .timer)
                             .font(.system(size: 12, weight: .semibold, design: .monospaced))
                             .monospacedDigit()
                             .foregroundStyle(.green)
-                    } else {
-                        Text(context.state.timerEndAt, style: .timer)
+                    } else if !timerExpired {
+                        Text(state.timerEndAt, style: .timer)
                             .font(.system(size: 12, weight: .semibold, design: .monospaced))
                             .monospacedDigit()
+                    } else {
+                        // Check-in state
+                        Text("TAP")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.orange)
                     }
                 }
             } minimal: {
-                TimelineView(.explicit([Date(), context.state.timerEndAt, context.state.autoContinueEndAt].compactMap { $0 })) { timeline in
-                    let now = timeline.date
-                    let timerExpired = now >= context.state.timerEndAt
-                    let showAutoContinue = context.state.isAutoContinue || (timerExpired && context.state.autoContinueEndAt != nil)
+                TimelineView(.periodic(from: Date(), by: 1.0)) { _ in
+                    let now = Date()
+                    let state = context.state
+                    let timerExpired = now >= state.timerEndAt
+                    let autoContinueExpired = state.autoContinueEndAt.map { now >= $0 } ?? true
+                    let showAutoContinue = state.isAutoContinue || (timerExpired && !autoContinueExpired)
 
-                    if showAutoContinue, let endAt = context.state.autoContinueEndAt {
+                    if showAutoContinue, let endAt = state.autoContinueEndAt {
                         Text(endAt, style: .timer)
                             .font(.system(size: 11, design: .monospaced))
                             .monospacedDigit()
                             .foregroundStyle(.green)
-                    } else {
-                        Text(context.state.timerEndAt, style: .timer)
+                    } else if !timerExpired {
+                        Text(state.timerEndAt, style: .timer)
                             .font(.system(size: 11, design: .monospaced))
                             .monospacedDigit()
+                    } else {
+                        // Check-in state
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
                     }
                 }
             }
