@@ -496,6 +496,9 @@ struct MainView: View {
 
                     if timeSinceCompletion >= autoContinueSeconds {
                         // Auto-continue period has passed — process retroactive auto-continues
+                        // CRITICAL: Hide dialog FIRST to prevent race with dialog's onAutoContinue
+                        // The dialog's onAppear fires immediately when completedAt is far in the past
+                        timerManager.showTimerComplete = false
                         Task {
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
@@ -518,6 +521,8 @@ struct MainView: View {
 
                     if timeSinceCompletion >= autoContinueSeconds {
                         // Break auto-continue period has passed — process retroactive auto-continues
+                        // CRITICAL: Hide dialog FIRST to prevent race with dialog's onAutoContinue
+                        timerManager.showBreakComplete = false
                         Task {
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
