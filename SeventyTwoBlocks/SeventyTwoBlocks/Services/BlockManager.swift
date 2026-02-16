@@ -626,7 +626,12 @@ final class BlockManager: ObservableObject {
 
         print("🔄 Processing auto-skip for blocks before \(currentBlockIndex) (logical pos \(currentLogicalPos), dayStartIndex=\(dayStartIndex))")
 
-        for block in blocks {
+        // PHASE 1: Update local state immediately (instant UI update)
+        var blocksToSave: [Block] = []
+
+        for i in blocks.indices {
+            let block = blocks[i]
+
             // Only process past blocks - compare in logical day order, not raw index order
             let blockLogicalPos = logicalPosition(block.blockIndex)
             guard blockLogicalPos < currentLogicalPos else { continue }
@@ -648,35 +653,74 @@ final class BlockManager: ObservableObject {
             // Segments and usedSeconds are the most reliable indicators of actual work
             let hasRealUsage = hasSegments || hasUsedSeconds || hasRuns || hasSnapshot
 
+            var updatedBlock = block
             if hasRealUsage {
-                // Has actual usage data - mark as done (even if it had timer usage this session)
-                await markBlockDone(block)
+                // Has actual usage data - mark as done
+                updatedBlock.status = .done
+                let segmentSeconds = block.segments.reduce(0) { $0 + $1.seconds }
+                print("✅ Auto-marking block \(block.blockIndex) as DONE - segments: \(block.segments.count), \(segmentSeconds)s")
             } else if !blocksWithTimerUsage.contains(block.blockIndex) {
                 // No real usage AND wasn't used this session - skip it
-                // Don't auto-skip blocks that had timer usage (user might have stopped early intentionally)
-                await markBlockSkipped(block)
+                updatedBlock.status = .skipped
+                print("⏭️ Auto-skipping block \(block.blockIndex)")
+            } else {
+                continue  // Had timer usage this session, leave as-is
             }
+
+            // Update local state immediately
+            blocks[i] = updatedBlock
+            blocksToSave.append(updatedBlock)
+        }
+
+        // Notify UI of changes immediately
+        if !blocksToSave.isEmpty {
+            onBlocksChanged?()
+        }
+
+        // PHASE 2: Save to database in background (doesn't block UI)
+        for block in blocksToSave {
+            await saveBlockToDBOnly(block)
         }
     }
 
-    private func markBlockDone(_ block: Block) async {
-        var updatedBlock = block
-        updatedBlock.status = .done
-        // Preserve category and label
+    /// Save block to database only (doesn't update local state - already done)
+    private func saveBlockToDBOnly(_ block: Block) async {
+        do {
+            let db = await supabaseDBAsync()
+            guard let session = try? await supabaseAuth.session else { return }
 
-        let segmentSeconds = block.segments.reduce(0) { $0 + $1.seconds }
-        print("✅ Auto-marking block \(block.blockIndex) as DONE - segments: \(block.segments.count), \(segmentSeconds)s, visualFill=\(String(format: "%.2f", block.visualFill))")
-        await saveBlock(updatedBlock)
+            let userId = session.user.id.uuidString
+            let blockToSave = Block(
+                id: block.id,
+                userId: userId,
+                date: block.date,
+                blockIndex: block.blockIndex,
+                isMuted: block.isMuted,
+                isActivated: block.isActivated,
+                category: block.category,
+                label: block.label,
+                note: block.note,
+                status: block.status,
+                progress: block.progress,
+                breakProgress: block.breakProgress,
+                runs: block.runs,
+                activeRunSnapshot: block.activeRunSnapshot,
+                segments: block.segments,
+                usedSeconds: block.usedSeconds,
+                visualFill: block.visualFill,
+                createdAt: block.createdAt,
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            )
+
+            try await db
+                .from("blocks")
+                .upsert(blockToSave, onConflict: "user_id,date,block_index")
+                .execute()
+        } catch {
+            print("❌ Error saving block \(block.blockIndex) to DB: \(error)")
+        }
     }
 
-    private func markBlockSkipped(_ block: Block) async {
-        var updatedBlock = block
-        updatedBlock.status = .skipped
-        // Preserve category and label (planned metadata)
-
-        print("⏭️ Auto-skipping block \(block.blockIndex)")
-        await saveBlock(updatedBlock)
-    }
 
     // MARK: - Block Activation
 
