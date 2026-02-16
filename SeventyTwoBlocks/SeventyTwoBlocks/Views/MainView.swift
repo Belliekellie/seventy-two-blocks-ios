@@ -868,7 +868,10 @@ struct MainView: View {
         let actualCurrentBlock = Block.getCurrentBlockIndex()
         let nextBlockIndex = actualCurrentBlock
         let blockEndAt = Block.blockEndDate(for: nextBlockIndex)
-        print("📱 handleContinueWork: continuing to block \(nextBlockIndex), blockEndAt = \(blockEndAt), timeUntilEnd = \(String(format: "%.0f", blockEndAt.timeIntervalSinceNow))s")
+        let blockStartAt = Block.blockStartDate(for: nextBlockIndex)
+        let timeUntilEnd = blockEndAt.timeIntervalSinceNow
+        let elapsedSinceBlockStart = Date().timeIntervalSince(blockStartAt)
+        print("📱 handleContinueWork: continuing to block \(nextBlockIndex), blockEndAt = \(blockEndAt), timeUntilEnd = \(String(format: "%.0f", timeUntilEnd))s, elapsed = \(String(format: "%.0f", elapsedSinceBlockStart))s")
         blocksWithTimerUsage.insert(nextBlockIndex)
 
         // GUARD: Don't restart if timer is already running on this block
@@ -890,13 +893,44 @@ struct MainView: View {
 
         // Get existing segments from next block (in case it has data from earlier)
         // BUT if we're crossing a day boundary, use empty segments (new day = fresh block)
-        let existingSegments: [BlockSegment]
+        var existingSegments: [BlockSegment]
         if isToday {
             let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
             existingSegments = nextBlock?.segments ?? []
         } else {
             // Day boundary crossed - new day's block is fresh, no existing segments
             existingSegments = []
+        }
+
+        // CRITICAL: If time has elapsed on this block while we were backgrounded,
+        // create a segment for that elapsed time. This ensures the visual fill
+        // reflects the actual time that would have been worked.
+        let elapsedSeconds = Int(elapsedSinceBlockStart)
+        if elapsedSeconds > 5 && existingSegments.isEmpty {
+            // More than 5 seconds elapsed and no existing segments = returning from background
+            // Create a segment for the elapsed time
+            let elapsedSegment = BlockSegment(
+                type: wasBreak ? .break : .work,
+                seconds: min(elapsedSeconds, 1200),  // Cap at block duration
+                category: wasBreak ? nil : category,
+                label: wasBreak ? nil : label,
+                startElapsed: 0
+            )
+            existingSegments = [elapsedSegment]
+            print("📱 Created elapsed segment: \(elapsedSeconds)s of \(wasBreak ? "break" : "work") for backgrounded time")
+
+            // Calculate visual fill for the elapsed time
+            let elapsedVisualFill = min(Double(elapsedSeconds) / 1200.0, 1.0)
+
+            // Update the block immediately with the elapsed segment
+            if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
+                blockManager.blocks[blockIdx].segments = existingSegments
+                blockManager.blocks[blockIdx].category = category
+                blockManager.blocks[blockIdx].label = label
+                blockManager.blocks[blockIdx].usedSeconds = elapsedSeconds
+                blockManager.blocks[blockIdx].visualFill = elapsedVisualFill
+                blockManager.blocks[blockIdx].progress = elapsedVisualFill * 100
+            }
         }
 
         timerManager.continueToNextBlock(

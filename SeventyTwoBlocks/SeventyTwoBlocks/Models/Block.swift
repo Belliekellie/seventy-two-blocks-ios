@@ -325,4 +325,12 @@ extension Block {
         let blockEndMinutes = (index + 1) * 20
         return startOfDay.addingTimeInterval(TimeInterval(blockEndMinutes * 60))
     }
+
+    /// Get the start date/time for a specific block on a given date
+    static func blockStartDate(for index: Int, on date: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let blockStartMinutes = index * 20
+        return startOfDay.addingTimeInterval(TimeInterval(blockStartMinutes * 60))
+    }
 }
