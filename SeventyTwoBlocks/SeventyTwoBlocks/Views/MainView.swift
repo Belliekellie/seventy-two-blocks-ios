@@ -287,6 +287,7 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: timerManager.showPausedExpiry)
         // Dialog priority: Timer/Break complete dialogs take precedence over planned dialog
         .onChange(of: timerManager.showTimerComplete) { _, newValue in
+            print("📱 DEBUG: showTimerComplete changed to \(newValue)")
             if newValue {
                 // Timer complete takes priority over all other dialogs
                 if showPlannedBlockDialog {

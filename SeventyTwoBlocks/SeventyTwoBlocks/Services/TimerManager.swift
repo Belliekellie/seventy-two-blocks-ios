@@ -720,6 +720,7 @@ final class TimerManager: ObservableObject {
         showBreakComplete = false
         breakNotifyAt = nil
         showTimerComplete = true
+        print("⏱️ DEBUG: showTimerComplete set to TRUE, isActive=\(isActive)")
 
         // Record completion time for epoch-based auto-continue countdown
         // Uses actual end time, not current time, so backgrounded duration is accounted for
