@@ -200,6 +200,7 @@ final class TimerManager: ObservableObject {
         // This preserves the actual visual position from previous sessions
         if let savedFill = existingVisualFill, savedFill > 0 {
             previousVisualProportion = min(savedFill, 1.0)
+            print("⏱️ Using saved visual fill: \(String(format: "%.1f%%", previousVisualProportion * 100))")
         } else {
             // Fallback: calculate from segments using 1/1200 scale
             let blockDuration = 1200.0
@@ -207,6 +208,8 @@ final class TimerManager: ObservableObject {
                 sum + Double(seg.seconds) / blockDuration
             }
             previousVisualProportion = min(existingVisualProportion, 1.0)
+            let totalSegmentSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+            print("⏱️ Calculated visual fill from \(existingSegments.count) segments (\(totalSegmentSeconds)s): \(String(format: "%.1f%%", previousVisualProportion * 100))")
         }
 
         // Calculate remaining visual space

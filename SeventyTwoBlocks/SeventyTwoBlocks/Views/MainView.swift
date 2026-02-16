@@ -933,6 +933,9 @@ struct MainView: View {
             }
         }
 
+        let totalExistingSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+        print("📱 Passing \(existingSegments.count) segments (\(totalExistingSeconds)s) to continueToNextBlock")
+
         timerManager.continueToNextBlock(
             nextBlockIndex: nextBlockIndex,
             date: todayString,
