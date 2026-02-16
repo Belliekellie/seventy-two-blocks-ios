@@ -905,31 +905,44 @@ struct MainView: View {
         // CRITICAL: If time has elapsed on this block while we were backgrounded,
         // create a segment for that elapsed time. This ensures the visual fill
         // reflects the actual time that would have been worked.
+        // Check: elapsed > 5s AND (no existing segments OR existing segments are stale/don't cover elapsed time)
         let elapsedSeconds = Int(elapsedSinceBlockStart)
-        if elapsedSeconds > 5 && existingSegments.isEmpty {
-            // More than 5 seconds elapsed and no existing segments = returning from background
-            // Create a segment for the elapsed time
+        let existingSegmentSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+        print("📱 DEBUG: elapsedSeconds=\(elapsedSeconds), existingSegments=\(existingSegments.count) (\(existingSegmentSeconds)s)")
+
+        // Create elapsed segment if: enough time passed AND existing segments don't account for it
+        let additionalSeconds = elapsedSeconds - existingSegmentSeconds
+        if additionalSeconds > 5 {
+            // Time has elapsed that isn't covered by existing segments = returning from background
+            // Create a segment for the additional elapsed time
             let elapsedSegment = BlockSegment(
                 type: wasBreak ? .break : .work,
-                seconds: min(elapsedSeconds, 1200),  // Cap at block duration
+                seconds: min(additionalSeconds, 1200 - existingSegmentSeconds),  // Cap at remaining block duration
                 category: wasBreak ? nil : category,
                 label: wasBreak ? nil : label,
-                startElapsed: 0
+                startElapsed: existingSegmentSeconds  // Start where existing segments end
             )
-            existingSegments = [elapsedSegment]
-            print("📱 Created elapsed segment: \(elapsedSeconds)s of \(wasBreak ? "break" : "work") for backgrounded time")
+            existingSegments.append(elapsedSegment)
+            print("📱 Created elapsed segment: \(additionalSeconds)s of \(wasBreak ? "break" : "work") for backgrounded time (total now: \(existingSegments.reduce(0) { $0 + $1.seconds })s)")
 
-            // Calculate visual fill for the elapsed time
-            let elapsedVisualFill = min(Double(elapsedSeconds) / 1200.0, 1.0)
+            // Calculate visual fill for total elapsed time
+            let totalSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+            let elapsedVisualFill = min(Double(totalSeconds) / 1200.0, 1.0)
 
-            // Update the block immediately with the elapsed segment
+            // Update the block immediately with all segments
             if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
                 blockManager.blocks[blockIdx].segments = existingSegments
-                blockManager.blocks[blockIdx].category = category
-                blockManager.blocks[blockIdx].label = label
-                blockManager.blocks[blockIdx].usedSeconds = elapsedSeconds
+                blockManager.blocks[blockIdx].category = category ?? blockManager.blocks[blockIdx].category
+                blockManager.blocks[blockIdx].label = label ?? blockManager.blocks[blockIdx].label
+                blockManager.blocks[blockIdx].usedSeconds = totalSeconds
                 blockManager.blocks[blockIdx].visualFill = elapsedVisualFill
                 blockManager.blocks[blockIdx].progress = elapsedVisualFill * 100
+            }
+        } else if existingSegments.isEmpty && (category != nil || label != nil) {
+            // No elapsed time but we have category/label to set
+            if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
+                blockManager.blocks[blockIdx].category = category
+                blockManager.blocks[blockIdx].label = label
             }
         }
 
