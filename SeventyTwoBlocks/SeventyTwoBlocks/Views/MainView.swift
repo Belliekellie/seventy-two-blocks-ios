@@ -603,17 +603,21 @@ struct MainView: View {
             let shouldMarkDone = isNaturalCompletion || blockTimeElapsed
 
             // IMMEDIATELY update local state (synchronous, no race condition)
-            // Fill is determined by visualFill, not status (so partial fills display correctly)
-            let actualProgress = min(100.0, Double(secondsUsed) / 1200.0 * 100.0)
+            // Calculate total seconds from ALL segments (including elapsed time from background)
+            let normalizedSegments = BlockSegment.normalized(segments)
+            let totalSegmentSeconds = normalizedSegments.reduce(0) { $0 + $1.seconds }
+            // Use segment total for usedSeconds (not just timer's secondsUsed which misses background time)
+            let actualUsedSeconds = max(secondsUsed, totalSegmentSeconds)
+            let actualProgress = min(100.0, Double(actualUsedSeconds) / 1200.0 * 100.0)
             if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
                 if shouldMarkDone {
                     self.blockManager.blocks[idx].status = .done
-                    print("✅ Marked block \(blockIndex) as .done (natural: \(isNaturalCompletion), elapsed: \(blockTimeElapsed)), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%")
+                    print("✅ Marked block \(blockIndex) as .done (natural: \(isNaturalCompletion), elapsed: \(blockTimeElapsed)), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, segments: \(totalSegmentSeconds)s")
                 } else {
                     print("💾 Saved block \(blockIndex) segments (block still active), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%")
                 }
-                self.blockManager.blocks[idx].segments = BlockSegment.normalized(segments)
-                self.blockManager.blocks[idx].usedSeconds = secondsUsed
+                self.blockManager.blocks[idx].segments = normalizedSegments
+                self.blockManager.blocks[idx].usedSeconds = actualUsedSeconds
                 self.blockManager.blocks[idx].progress = actualProgress
                 self.blockManager.blocks[idx].visualFill = visualFill
             }
@@ -697,12 +701,18 @@ struct MainView: View {
             return
         }
 
+        // Normalize segments and calculate total time from ALL segments
+        // This includes elapsed time from background, not just timer's secondsUsed
+        let normalizedSegments = BlockSegment.normalized(segments)
+        let totalSegmentSeconds = normalizedSegments.reduce(0) { $0 + $1.seconds }
+        let actualUsedSeconds = max(secondsUsed, totalSegmentSeconds)
+
         // Calculate progress based on actual time used vs block duration
         let blockDurationSeconds = 20 * 60  // 1200 seconds
-        let actualProgress = min(100.0, Double(secondsUsed) / Double(blockDurationSeconds) * 100.0)
+        let actualProgress = min(100.0, Double(actualUsedSeconds) / Double(blockDurationSeconds) * 100.0)
 
         var updatedBlock = block
-        updatedBlock.usedSeconds = secondsUsed
+        updatedBlock.usedSeconds = actualUsedSeconds
         updatedBlock.progress = actualProgress
         updatedBlock.visualFill = visualFill  // Save actual visual fill reached
 
@@ -714,11 +724,10 @@ struct MainView: View {
         updatedBlock.category = timerManager.currentCategory ?? block.category
         updatedBlock.label = timerManager.currentLabel ?? block.label
 
-        // Use the segments passed from the callback (captured before clearing)
-        // Normalize to merge consecutive same-type/category/label segments (prevents micro-segment clutter)
-        updatedBlock.segments = BlockSegment.normalized(segments)
+        // Use normalized segments
+        updatedBlock.segments = normalizedSegments
 
-        print("💾 saveTimerCompletion: block \(blockIndex), used \(secondsUsed)s, progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, segments: \(segments.count), done: \(blockTimeElapsed)")
+        print("💾 saveTimerCompletion: block \(blockIndex), used \(actualUsedSeconds)s (timer: \(secondsUsed)s, segments: \(totalSegmentSeconds)s), progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, done: \(blockTimeElapsed)")
 
         await blockManager.saveBlock(updatedBlock)
         await blockManager.reloadBlocks()
