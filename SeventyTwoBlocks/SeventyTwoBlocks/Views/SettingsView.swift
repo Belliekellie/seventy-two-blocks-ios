@@ -23,6 +23,7 @@ struct SettingsView: View {
     // Timer Settings
     @AppStorage("disableAutoContinue") private var disableAutoContinue = false
     @AppStorage("blocksUntilCheckIn") private var blocksUntilCheckIn = 3
+    @AppStorage("playSoundsInSilentMode") private var playSoundsInSilentMode = false
 
     // Skipped Block Style (motivational insults)
     @AppStorage("showMotivationalInsults") private var showMotivationalInsults = false
@@ -111,10 +112,19 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    Toggle(isOn: $playSoundsInSilentMode) {
+                        HStack(spacing: 8) {
+                            Text("🔔")
+                            Text("Play sounds in silent mode")
+                        }
+                    }
                 } header: {
                     Text("Timer")
                 } footer: {
-                    if disableAutoContinue {
+                    if playSoundsInSilentMode {
+                        Text("Completion chime will play even when your phone is on silent.")
+                    } else if disableAutoContinue {
                         Text("When disabled, timer won't automatically continue to the next block.")
                     } else {
                         Text("When the app auto-continues without interaction, it will ask you to confirm after this many blocks.")
