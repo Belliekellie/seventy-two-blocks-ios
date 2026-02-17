@@ -889,11 +889,17 @@ final class TimerManager: ObservableObject {
 
         if endAt <= Date() {
             // Timer expired while app was suspended
-            // CRITICAL: Update timeLeft to 0 so secondsUsed = initialTime
-            // This ensures the full work time is recorded, not just the time
-            // the app was active before backgrounding
-            print("🔄 restoreFromBackground: timer expired, completing")
+            // CRITICAL: Credit the FULL block time, not just what was captured before suspension
+            // The in-memory segments are stale (from last tick before iOS suspended us)
+            // We need to replace them with a single full-duration segment
+            print("🔄 restoreFromBackground: timer expired while backgrounded, crediting full \(initialTime)s")
+
+            // Clear stale segments and reset segment tracking
+            // This ensures finalizeCurrentSegment() creates one segment for the full duration
+            liveSegments = []
+            currentSegmentStartElapsed = 0
             timeLeft = 0
+
             handleTimerComplete()
         } else {
             // Timer still running — recalculate and restart timers
