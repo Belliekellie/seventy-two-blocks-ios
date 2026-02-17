@@ -152,7 +152,12 @@ struct MainView: View {
                         timerManager.incrementInteractionCounter()
                         // After N blocks without user interaction, stop instead of continuing
                         // This prevents "zombie blocks" from filling when user is away
-                        if shouldSuppressAutoContinue {
+                        // Use > (not >=) because:
+                        // - Dialog shows check-in when counter >= limit (fires onStop, not onAutoContinue)
+                        // - This callback only fires when dialog showed auto-continue (counter < limit before increment)
+                        // - After increment, counter = limit means we just completed the Nth block, continue to N+1
+                        // - Counter > limit would mean we're past the threshold (shouldn't happen normally)
+                        if timerManager.blocksSinceLastInteraction > blocksUntilCheckIn {
                             handleStop()
                         } else {
                             // Skip Live Activity restart - existing activity already has next block data
@@ -174,6 +179,43 @@ struct MainView: View {
                     onSkipNextBlock: handleSkipNextBlock,
                     onStop: {
                         timerManager.resetInteractionCounter()
+                        handleStop()
+                    }
+                )
+                .transition(.scale.combined(with: .opacity))
+            }
+
+            // Grace period overlay: timer is running but user needs to confirm they're still there
+            // If they don't respond before the block ends, it's marked as skipped
+            if timerManager.isInCheckInGracePeriod && timerManager.isActive {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture { }
+
+                CheckInGracePeriodView(
+                    blockIndex: timerManager.currentBlockIndex ?? 0,
+                    timeLeft: timerManager.timeLeft,
+                    category: timerManager.currentCategory,
+                    label: timerManager.currentLabel,
+                    isBreakMode: timerManager.isBreak,
+                    onContinue: {
+                        timerManager.resetInteractionCounter()
+                        timerManager.isInCheckInGracePeriod = false
+                        // Timer keeps running - no need to start anything
+                    },
+                    onTakeBreak: {
+                        timerManager.resetInteractionCounter()
+                        timerManager.isInCheckInGracePeriod = false
+                        handleTakeBreak()
+                    },
+                    onBackToWork: {
+                        timerManager.resetInteractionCounter()
+                        timerManager.isInCheckInGracePeriod = false
+                        handleBackToWork()
+                    },
+                    onStop: {
+                        timerManager.resetInteractionCounter()
+                        timerManager.isInCheckInGracePeriod = false
                         handleStop()
                     }
                 )
@@ -285,10 +327,24 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: showPlannedBlockDialog)
         .animation(.easeInOut(duration: 0.2), value: showDayEndDialog)
         .animation(.easeInOut(duration: 0.2), value: timerManager.showPausedExpiry)
+        .animation(.easeInOut(duration: 0.2), value: timerManager.isInCheckInGracePeriod)
         // Dialog priority: Timer/Break complete dialogs take precedence over planned dialog
         .onChange(of: timerManager.showTimerComplete) { _, newValue in
-            print("📱 DEBUG: showTimerComplete changed to \(newValue)")
+            print("📱 DEBUG: showTimerComplete changed to \(newValue), shouldSuppressAutoContinue=\(shouldSuppressAutoContinue)")
             if newValue {
+                // Check if this should trigger grace period mode instead of normal dialog
+                if shouldSuppressAutoContinue {
+                    print("📱 Check-in triggered - entering grace period mode")
+                    // Immediately suppress the dialog and enter grace period
+                    timerManager.showTimerComplete = false
+                    timerManager.incrementInteractionCounter()
+                    // Start the next block - timer will run during grace period
+                    handleContinueWork(skipLiveActivityRestart: true)
+                    // Set grace period flag AFTER starting timer (startTimer resets it)
+                    timerManager.isInCheckInGracePeriod = true
+                    return
+                }
+
                 // Timer complete takes priority over all other dialogs
                 if showPlannedBlockDialog {
                     showPlannedBlockDialog = false
@@ -659,6 +715,29 @@ struct MainView: View {
             // nextBlockTimerEndAt, nextBlockAutoContinueEndAt).
         }
 
+        // Grace period expired: user didn't respond to check-in, block should be marked as skipped
+        timerManager.onGracePeriodExpired = { blockIndex, date in
+            print("📱 Grace period expired for block \(blockIndex) - marking as skipped")
+
+            // Update local state immediately
+            if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                self.blockManager.blocks[idx].status = .skipped
+                self.blockManager.blocks[idx].segments = []
+                self.blockManager.blocks[idx].usedSeconds = 0
+                self.blockManager.blocks[idx].progress = 0
+                self.blockManager.blocks[idx].visualFill = 0
+            }
+
+            // Save to database
+            Task {
+                await self.saveGracePeriodSkip(blockIndex: blockIndex, date: date)
+            }
+
+            // End Live Activity
+            WidgetDataProvider.shared.endLiveActivity()
+            NotificationManager.shared.cancelAllNotifications()
+        }
+
         // Blocks changed callback: called on load/save/reload
         blockManager.onBlocksChanged = { [self] in
             WidgetDataProvider.shared.updateWidgetData(
@@ -728,6 +807,28 @@ struct MainView: View {
         updatedBlock.segments = normalizedSegments
 
         print("💾 saveTimerCompletion: block \(blockIndex), used \(actualUsedSeconds)s (timer: \(secondsUsed)s, segments: \(totalSegmentSeconds)s), progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, done: \(blockTimeElapsed)")
+
+        await blockManager.saveBlock(updatedBlock)
+        await blockManager.reloadBlocks()
+    }
+
+    /// Save a block as skipped when grace period expires without user interaction
+    private func saveGracePeriodSkip(blockIndex: Int, date: String) async {
+        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
+            print("⚠️ saveGracePeriodSkip: block \(blockIndex) not found")
+            return
+        }
+
+        var updatedBlock = block
+        updatedBlock.status = .skipped
+        updatedBlock.segments = []
+        updatedBlock.usedSeconds = 0
+        updatedBlock.progress = 0
+        updatedBlock.visualFill = 0
+        // Clear any active run snapshot
+        updatedBlock.activeRunSnapshot = nil
+
+        print("💾 saveGracePeriodSkip: block \(blockIndex) marked as skipped")
 
         await blockManager.saveBlock(updatedBlock)
         await blockManager.reloadBlocks()

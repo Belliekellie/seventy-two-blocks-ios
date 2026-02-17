@@ -29,6 +29,15 @@ final class AudioManager {
         selectionGenerator.prepare()
     }
 
+    /// Fully warm up the haptic engine by triggering a minimal haptic
+    /// Call this at app startup to prevent delay on first user interaction
+    func warmupHaptics() {
+        // Trigger selection feedback - it's the lightest and least noticeable
+        // This forces the haptic engine to fully initialize
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
+    }
+
     /// Configure audio session - call this when needed for synthesized playback
     private func configureAudioSessionForPlayback() {
         do {

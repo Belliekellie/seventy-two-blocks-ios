@@ -34,6 +34,10 @@ final class TimerManager: ObservableObject {
     // Check-in tracking: counts consecutive auto-continues without user interaction
     @Published var blocksSinceLastInteraction: Int = 0
 
+    // Grace period mode: timer is running but user needs to confirm they're still there
+    // If timer completes while this is true, the block is discarded (marked skipped)
+    @Published var isInCheckInGracePeriod: Bool = false
+
     // MARK: - Internal State
     private var startedAt: Date?
     private var endAt: Date?
@@ -71,6 +75,9 @@ final class TimerManager: ObservableObject {
     var onTimerComplete: ((Int, String, Bool, Int, Int, [BlockSegment], Double) -> Void)?
     var onSaveSnapshot: ((Int, String, Run) -> Void)?  // blockIndex, date, snapshot
     var onWidgetUpdate: (() -> Void)?
+    // onGracePeriodExpired: blockIndex, date - called when timer completes during grace period
+    // The block should be marked as skipped with no fill (segments are discarded)
+    var onGracePeriodExpired: ((Int, String) -> Void)?
 
     // Widget update throttling: only notify at 25% progress milestones
     private var lastReportedProgressQuarter: Int = -1
@@ -608,6 +615,7 @@ final class TimerManager: ObservableObject {
         sessionScaleFactor = 1.0 / 1200.0
         previousVisualProportion = 0
         lastReportedProgressQuarter = -1
+        isInCheckInGracePeriod = false
         // NOTE: Do NOT reset blocksSinceLastInteraction here.
         // stopTimerInternal() is called by startTimer() during auto-continue,
         // which would wipe the counter and defeat the check-in system.
@@ -676,7 +684,7 @@ final class TimerManager: ObservableObject {
     }
 
     private func handleTimerComplete() {
-        print("⏱️ handleTimerComplete called - isActive: \(isActive)")
+        print("⏱️ handleTimerComplete called - isActive: \(isActive), isInCheckInGracePeriod: \(isInCheckInGracePeriod)")
         // Capture actual end time BEFORE state changes
         // If timer expired while backgrounded, endAt is in the past (when it actually expired)
         let actualCompletionTime = endAt ?? Date()
@@ -685,12 +693,44 @@ final class TimerManager: ObservableObject {
             return
         }
 
+        // CRITICAL: Capture block info BEFORE clearing state
+        let blockIndex = currentBlockIndex
+        let date = currentDate
+
+        // Check if this is a grace period expiry (user didn't respond to check-in)
+        if isInCheckInGracePeriod {
+            print("⏱️ Grace period expired - discarding block segments")
+
+            // Stop the timer and clear state
+            timer?.invalidate()
+            timer = nil
+            autosaveTimer?.invalidate()
+            autosaveTimer = nil
+            isActive = false
+            timeLeft = 0
+            isInCheckInGracePeriod = false
+
+            // Clear segments (don't save them)
+            liveSegments = []
+            previousSegments = []
+
+            // Notify MainView to mark block as skipped
+            if let blockIndex = blockIndex, let date = date {
+                onGracePeriodExpired?(blockIndex, date)
+            }
+
+            // Notify widget
+            onWidgetUpdate?()
+
+            print("⏱️ Grace period block discarded")
+            return
+        }
+
+        // Normal completion flow below
+
         // Finalize segment
         finalizeCurrentSegment()
 
-        // CRITICAL: Capture all data BEFORE clearing state
-        let blockIndex = currentBlockIndex
-        let date = currentDate
         let wasBreak = isBreak
         // Combine previous segments with live segments for final result
         // This preserves work from earlier timer sessions (matches stopTimer behavior)

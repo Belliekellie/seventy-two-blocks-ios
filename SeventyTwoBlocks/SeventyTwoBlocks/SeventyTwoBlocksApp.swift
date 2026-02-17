@@ -18,6 +18,9 @@ struct SeventyTwoBlocksApp: App {
     init() {
         // Ensure the notification delegate is registered before any notifications arrive
         _ = NotificationManager.shared
+        // Warm up AudioManager and trigger a silent haptic to fully initialize the haptic engine
+        // This prevents 4-5 second delay on first button press
+        AudioManager.shared.warmupHaptics()
     }
 
     private var colorScheme: ColorScheme {
