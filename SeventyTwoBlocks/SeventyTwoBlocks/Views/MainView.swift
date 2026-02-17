@@ -1315,9 +1315,70 @@ struct MainView: View {
 
         print("🔄 Found orphaned timer session on block \(orphanedBlock.blockIndex), blockEndTime=\(blockEndTime), now=\(now)")
 
-        // Only process if this block's time has passed
-        guard now > blockEndTime else {
-            print("🔄 Orphaned block \(orphanedBlock.blockIndex) is still current - will be handled by normal timer flow")
+        // Check if this block is still current (hasn't ended yet)
+        if now <= blockEndTime {
+            // Block is still current - restart the timer with existing segments from snapshot
+            // PLUS credit the elapsed time since block started (which includes time while phone was locked)
+            print("🔄 Orphaned block \(orphanedBlock.blockIndex) is still current - restarting timer with snapshot data")
+
+            var existingSegments = snapshot.segments
+            let lastWorkSegment = existingSegments.last(where: { $0.type == .work })
+            let category = lastWorkSegment?.category ?? orphanedBlock.category
+            let label = lastWorkSegment?.label ?? orphanedBlock.label
+            let isBreak = snapshot.currentType == .break
+
+            // Calculate how much time has elapsed since block started
+            let blockStartTime = Block.blockStartDate(for: orphanedBlock.blockIndex)
+            let elapsedSinceBlockStart = Int(now.timeIntervalSince(blockStartTime))
+            let snapshotSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+
+            // Credit the time that passed while phone was locked (difference between elapsed and snapshot)
+            let additionalSeconds = elapsedSinceBlockStart - snapshotSeconds
+            if additionalSeconds > 5 {
+                // Add elapsed time segment with same type as snapshot's current type
+                let elapsedSegment = BlockSegment(
+                    type: isBreak ? .break : .work,
+                    seconds: min(additionalSeconds, 1200 - snapshotSeconds),
+                    category: isBreak ? nil : category,
+                    label: isBreak ? nil : label,
+                    startElapsed: snapshotSeconds
+                )
+                existingSegments.append(elapsedSegment)
+                print("🔄 Added \(elapsedSegment.seconds)s elapsed time segment (phone was locked)")
+            }
+
+            // Calculate existing visual fill from all segments
+            let totalSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+            let existingVisualFill = Double(totalSeconds) / 1200.0
+
+            // Start timer with the snapshot's segments as existing progress
+            timerManager.startTimer(
+                for: orphanedBlock.blockIndex,
+                date: orphanedBlock.date,
+                isBreakMode: isBreak,
+                category: category,
+                label: label,
+                existingSegments: existingSegments,
+                existingVisualFill: existingVisualFill
+            )
+
+            // Restart Live Activity
+            if let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt {
+                let categoryColor = blockManager.categories.first { $0.id == category }?.color
+                Task {
+                    await WidgetDataProvider.shared.startLiveActivity(
+                        blockIndex: orphanedBlock.blockIndex,
+                        isBreak: isBreak,
+                        timerEndAt: endAt,
+                        timerStartedAt: startedAt,
+                        category: category,
+                        categoryColor: categoryColor,
+                        label: label,
+                        progress: existingVisualFill
+                    )
+                }
+            }
+
             return
         }
 
