@@ -454,7 +454,14 @@ final class TimerManager: ObservableObject {
     // MARK: - Work/Break Switching
 
     func switchToBreak() {
-        guard isActive, !isBreak else { return }
+        guard isActive else {
+            print("⏱️ switchToBreak SKIPPED - isActive=false")
+            return
+        }
+        guard !isBreak else {
+            print("⏱️ switchToBreak SKIPPED - already in break mode")
+            return
+        }
 
         // Preserve work context before switching to break
         lastWorkCategory = currentCategory
@@ -482,7 +489,14 @@ final class TimerManager: ObservableObject {
     }
 
     func switchToWork() {
-        guard isActive, isBreak else { return }
+        guard isActive else {
+            print("⏱️ switchToWork SKIPPED - isActive=false")
+            return
+        }
+        guard isBreak else {
+            print("⏱️ switchToWork SKIPPED - not in break mode")
+            return
+        }
 
         // Calculate break time
         if let breakStart = breakStartTime {

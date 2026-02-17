@@ -199,21 +199,25 @@ struct MainView: View {
                     label: timerManager.currentLabel,
                     isBreakMode: timerManager.isBreak,
                     onContinue: {
+                        print("📱 GracePeriod: onContinue pressed - clearing grace period flag")
                         timerManager.resetInteractionCounter()
                         timerManager.isInCheckInGracePeriod = false
                         // Timer keeps running - no need to start anything
                     },
                     onTakeBreak: {
+                        print("📱 GracePeriod: onTakeBreak pressed - isActive=\(timerManager.isActive), timeLeft=\(timerManager.timeLeft)")
                         timerManager.resetInteractionCounter()
                         timerManager.isInCheckInGracePeriod = false
                         handleTakeBreak()
                     },
                     onBackToWork: {
+                        print("📱 GracePeriod: onBackToWork pressed - clearing grace period flag")
                         timerManager.resetInteractionCounter()
                         timerManager.isInCheckInGracePeriod = false
                         handleBackToWork()
                     },
                     onStop: {
+                        print("📱 GracePeriod: onStop pressed - clearing grace period flag")
                         timerManager.resetInteractionCounter()
                         timerManager.isInCheckInGracePeriod = false
                         handleStop()
@@ -330,11 +334,11 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: timerManager.isInCheckInGracePeriod)
         // Dialog priority: Timer/Break complete dialogs take precedence over planned dialog
         .onChange(of: timerManager.showTimerComplete) { _, newValue in
-            print("📱 DEBUG: showTimerComplete changed to \(newValue), shouldSuppressAutoContinue=\(shouldSuppressAutoContinue)")
+            print("📱 DEBUG: showTimerComplete changed to \(newValue), shouldSuppressAutoContinue=\(shouldSuppressAutoContinue), counter=\(timerManager.blocksSinceLastInteraction), threshold=\(blocksUntilCheckIn), isActive=\(timerManager.isActive), isBreak=\(timerManager.isBreak)")
             if newValue {
                 // Check if this should trigger grace period mode instead of normal dialog
                 if shouldSuppressAutoContinue {
-                    print("📱 Check-in triggered - entering grace period mode")
+                    print("📱 Check-in triggered - entering grace period mode (counter=\(timerManager.blocksSinceLastInteraction))")
                     // Immediately suppress the dialog and enter grace period
                     timerManager.showTimerComplete = false
                     timerManager.incrementInteractionCounter()

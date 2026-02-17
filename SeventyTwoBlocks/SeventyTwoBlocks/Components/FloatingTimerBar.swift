@@ -198,6 +198,7 @@ struct FloatingTimerBar: View {
                 HStack(spacing: 8) {
                     // Break toggle button (primary action) - disabled when paused
                     Button {
+                        print("🔘 FloatingTimerBar: Break/Work button pressed - isActive=\(timerManager.isActive), isBreak=\(timerManager.isBreak), isPaused=\(timerManager.isPaused), blockIndex=\(timerManager.currentBlockIndex ?? -1)")
                         AudioManager.shared.triggerHapticFeedback(.medium)
                         if timerManager.isBreak {
                             timerManager.switchToWork()
