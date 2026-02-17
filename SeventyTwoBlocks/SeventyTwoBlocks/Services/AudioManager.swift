@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import UIKit
 
 final class AudioManager {
@@ -54,17 +55,42 @@ final class AudioManager {
     func playCompletionBell() {
         print("🔔 playCompletionBell called, playSoundsInSilentMode=\(playSoundsInSilentMode)")
 
+        // Always trigger haptic feedback immediately
+        triggerHapticFeedback(.success)
+
         if playSoundsInSilentMode {
-            // Use synthesized sound that ignores silent switch
-            // Play at higher volume to ensure it's audible
-            playSynthesizedChime()
+            // User wants sounds even in silent mode
+            // Detect if phone is muted and play appropriate sound
+            detectMuteSwitch { [weak self] isMuted in
+                if isMuted {
+                    print("🔔 Phone is on silent - playing synthesized chime")
+                    self?.playSynthesizedChime()
+                } else {
+                    print("🔔 Phone is on loud - playing system sound")
+                    self?.playSystemSound(.tripleBeep)
+                }
+            }
         } else {
-            // Use system sound (respects silent switch)
+            // Use system sound only (respects silent switch - no sound when muted)
             playSystemSound(.tripleBeep)
         }
+    }
 
-        // Also trigger haptic feedback
-        triggerHapticFeedback(.success)
+    /// Detects if the phone's silent switch is on by playing a short system sound
+    /// and measuring how quickly it completes. Muted sounds complete instantly.
+    private func detectMuteSwitch(completion: @escaping (Bool) -> Void) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        // Play a very short system sound (keyboard click)
+        AudioServicesPlaySystemSoundWithCompletion(1104) {
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            // If muted, completion is near-instant (< 0.05s)
+            // If not muted, it takes the duration of the sound
+            let isMuted = elapsed < 0.05
+            DispatchQueue.main.async {
+                completion(isMuted)
+            }
+        }
     }
 
     // MARK: - Synthesized Chime (ignores silent mode)
