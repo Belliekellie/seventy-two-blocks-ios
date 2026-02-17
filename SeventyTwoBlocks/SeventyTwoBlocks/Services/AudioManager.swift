@@ -54,13 +54,13 @@ final class AudioManager {
     func playCompletionBell() {
         print("🔔 playCompletionBell called, playSoundsInSilentMode=\(playSoundsInSilentMode)")
 
-        // Always play system sound - this works when phone is not on silent
-        playSystemSound(.tripleBeep)
-
-        // Additionally play synthesized chime if setting enabled
-        // This provides audio feedback even when phone is on silent
         if playSoundsInSilentMode {
+            // Use synthesized sound that ignores silent switch
+            // Play at higher volume to ensure it's audible
             playSynthesizedChime()
+        } else {
+            // Use system sound (respects silent switch)
+            playSystemSound(.tripleBeep)
         }
 
         // Also trigger haptic feedback
@@ -131,7 +131,8 @@ final class AudioManager {
                 sample += 0.125 * sin(2.0 * .pi * note.frequency * 4.0 * t) // 4th harmonic
 
                 // Apply amplitude, decay, and add to buffer
-                channelData[frameIndex] += Float(sample * note.amplitude * decay * 0.3)
+                // Volume multiplier 0.6 for audible playback (was 0.3 which was too quiet)
+                channelData[frameIndex] += Float(sample * note.amplitude * decay * 0.6)
             }
         }
 
