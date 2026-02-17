@@ -84,6 +84,7 @@ struct Run: Codable, Identifiable {
     var currentType: BlockSegment.SegmentType
     var currentCategory: String?
     var lastWorkCategory: String?
+    var wasInGracePeriod: Bool?  // If true on snapshot, segments should be discarded on recovery
 
     // No CodingKeys - use camelCase to match JavaScript/database
 
@@ -103,10 +104,11 @@ struct Run: Codable, Identifiable {
         currentType = try container.decodeIfPresent(BlockSegment.SegmentType.self, forKey: .currentType) ?? .work
         currentCategory = try container.decodeIfPresent(String.self, forKey: .currentCategory)
         lastWorkCategory = try container.decodeIfPresent(String.self, forKey: .lastWorkCategory)
+        wasInGracePeriod = try container.decodeIfPresent(Bool.self, forKey: .wasInGracePeriod)
     }
 
     // Manual init for creating new runs
-    init(id: String, startedAt: Double, endedAt: Double? = nil, initialRealTime: Double, scaleFactor: Double, segments: [BlockSegment], currentSegmentStart: Double, currentType: BlockSegment.SegmentType, currentCategory: String? = nil, lastWorkCategory: String? = nil) {
+    init(id: String, startedAt: Double, endedAt: Double? = nil, initialRealTime: Double, scaleFactor: Double, segments: [BlockSegment], currentSegmentStart: Double, currentType: BlockSegment.SegmentType, currentCategory: String? = nil, lastWorkCategory: String? = nil, wasInGracePeriod: Bool? = nil) {
         self.id = id
         self.startedAt = startedAt
         self.endedAt = endedAt
@@ -117,11 +119,12 @@ struct Run: Codable, Identifiable {
         self.currentType = currentType
         self.currentCategory = currentCategory
         self.lastWorkCategory = lastWorkCategory
+        self.wasInGracePeriod = wasInGracePeriod
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, startedAt, endedAt, initialRealTime, scaleFactor, segments
-        case currentSegmentStart, currentType, currentCategory, lastWorkCategory
+        case currentSegmentStart, currentType, currentCategory, lastWorkCategory, wasInGracePeriod
     }
 }
 

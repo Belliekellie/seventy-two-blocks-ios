@@ -869,7 +869,8 @@ final class TimerManager: ObservableObject {
             currentSegmentStart: Double(currentSegmentStartElapsed),
             currentType: currentSegmentType,
             currentCategory: currentCategory,
-            lastWorkCategory: lastWorkCategory  // Use actual lastWorkCategory, not currentCategory
+            lastWorkCategory: lastWorkCategory,  // Use actual lastWorkCategory, not currentCategory
+            wasInGracePeriod: isInCheckInGracePeriod ? true : nil  // Persist grace period state
         )
 
         onSaveSnapshot?(blockIndex, date, snapshot)

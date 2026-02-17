@@ -531,11 +531,26 @@ struct MainView: View {
                     showStaleNotificationAlert = true
                 } else {
                     // Valid notification - process the action
-                    // User explicitly tapped a notification action — reset check-in counter
+                    // User explicitly tapped a notification action — reset check-in counter and clear grace period
                     timerManager.resetInteractionCounter()
+
+                    // CRITICAL: Clear grace period flag if set
+                    // If user clicks a notification during grace period, they've confirmed they're back
+                    // Without this, the timer would complete with grace period flag still true and discard segments
+                    if timerManager.isInCheckInGracePeriod {
+                        print("📲 Clearing grace period flag - user responded via notification")
+                        timerManager.isInCheckInGracePeriod = false
+                    }
+
                     switch action {
                     case "continue":
-                        handleContinueWork()
+                        // If timer is already running on this block (grace period), just clear the flag above
+                        // Don't restart the timer
+                        if timerManager.isActive && timerManager.currentBlockIndex == currentBlockIndex {
+                            print("📲 Timer already active, skipping handleContinueWork")
+                        } else {
+                            handleContinueWork()
+                        }
                     case "takeBreak": handleTakeBreak()
                     case "newBlock":
                         timerManager.dismissTimerComplete()
@@ -1316,8 +1331,25 @@ struct MainView: View {
 
         let blockEndTime = Block.blockEndDate(for: orphanedBlock.blockIndex)
         let now = Date()
+        let wasInGracePeriod = snapshot.wasInGracePeriod ?? false
 
-        print("🔄 Found orphaned timer session on block \(orphanedBlock.blockIndex), blockEndTime=\(blockEndTime), now=\(now)")
+        print("🔄 Found orphaned timer session on block \(orphanedBlock.blockIndex), blockEndTime=\(blockEndTime), now=\(now), wasInGracePeriod=\(wasInGracePeriod)")
+
+        // CRITICAL: If the snapshot was in grace period and block time has passed,
+        // the user didn't respond in time. Discard segments and mark as skipped.
+        if wasInGracePeriod && now > blockEndTime {
+            print("🔄 Grace period expired while app was killed - marking block \(orphanedBlock.blockIndex) as skipped")
+            var updatedBlock = orphanedBlock
+            updatedBlock.status = .skipped
+            updatedBlock.segments = []
+            updatedBlock.usedSeconds = 0
+            updatedBlock.progress = 0
+            updatedBlock.visualFill = 0
+            updatedBlock.activeRunSnapshot = nil
+            await blockManager.saveBlock(updatedBlock)
+            // Don't auto-continue from a failed grace period
+            return
+        }
 
         // Check if this block is still current (hasn't ended yet)
         if now <= blockEndTime {
@@ -1365,6 +1397,12 @@ struct MainView: View {
                 existingSegments: existingSegments,
                 existingVisualFill: existingVisualFill
             )
+
+            // Restore grace period state if it was active when app was killed
+            if wasInGracePeriod {
+                print("🔄 Restoring grace period state - timer continues but user needs to confirm")
+                timerManager.isInCheckInGracePeriod = true
+            }
 
             // Restart Live Activity
             if let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt {
