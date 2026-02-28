@@ -457,6 +457,12 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // 0. Cross-device sync: Check if another device modified the block while we were away
+            // This must happen BEFORE restoreFromBackground to avoid conflicts
+            Task {
+                await syncWithRemoteOnForeground()
+            }
+
             // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
             timerManager.restoreFromBackground()
 
@@ -987,6 +993,272 @@ struct MainView: View {
         }
     }
 
+    // MARK: - Cross-Device Sync
+
+    /// Sync with remote on foreground - checks if another device has modified the current block
+    private func syncWithRemoteOnForeground() async {
+        // Only sync if timer is active or paused
+        guard timerManager.isActive || timerManager.isPaused,
+              let blockIndex = timerManager.currentBlockIndex,
+              let date = timerManager.currentDate else {
+            print("🔄 syncWithRemoteOnForeground: No active timer, skipping sync")
+            return
+        }
+
+        print("🔄 syncWithRemoteOnForeground: Checking remote state for block \(blockIndex)")
+
+        // Fetch fresh block from Supabase
+        guard let remoteBlock = await blockManager.fetchBlockFromRemote(blockIndex: blockIndex, date: date) else {
+            print("🔄 syncWithRemoteOnForeground: No remote block found, continuing with local state")
+            return
+        }
+
+        // Get local block for comparison
+        guard let localBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) else {
+            print("🔄 syncWithRemoteOnForeground: No local block found, continuing")
+            return
+        }
+
+        // Compare updatedAt timestamps
+        let localUpdatedAt = parseISO8601Date(localBlock.updatedAt)
+        let remoteUpdatedAt = parseISO8601Date(remoteBlock.updatedAt)
+
+        // If remote is newer, handle the conflict
+        if let remoteTime = remoteUpdatedAt, let localTime = localUpdatedAt, remoteTime > localTime {
+            print("🔄 Remote block is newer (remote: \(remoteBlock.updatedAt ?? "nil"), local: \(localBlock.updatedAt ?? "nil"))")
+            await handleRemoteBlockConflict(remoteBlock: remoteBlock, localBlock: localBlock)
+        } else if remoteUpdatedAt != nil && localUpdatedAt == nil {
+            // Remote has timestamp, local doesn't - prefer remote
+            print("🔄 Remote block has timestamp, local doesn't - using remote")
+            await handleRemoteBlockConflict(remoteBlock: remoteBlock, localBlock: localBlock)
+        } else {
+            print("🔄 Local state is current, proceeding with normal restore")
+        }
+    }
+
+    /// Handle conflict when remote block is newer than local
+    private func handleRemoteBlockConflict(remoteBlock: Block, localBlock: Block) async {
+        let blockIndex = remoteBlock.blockIndex
+
+        // Case 1: Remote block is already done - another device completed it
+        if remoteBlock.status == .done {
+            print("🔄 Remote block \(blockIndex) is already .done - stopping local timer")
+
+            // Stop local timer without saving (remote already has the data)
+            timerManager.stopTimerWithoutSaving()
+
+            // Update local state with remote data
+            if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blockManager.blocks[idx] = remoteBlock
+            }
+
+            // Cancel notifications and Live Activity
+            NotificationManager.shared.cancelAllNotifications()
+            WidgetDataProvider.shared.endLiveActivity()
+
+            return
+        }
+
+        // Case 2: Remote has activeRunSnapshot - another device was working on it
+        if let remoteSnapshot = remoteBlock.activeRunSnapshot {
+            print("🔄 Remote block \(blockIndex) has activeRunSnapshot - merging data")
+
+            // Check if local timer is for the same block
+            if timerManager.currentBlockIndex == blockIndex {
+                // Merge: use remote segments but keep local timer running if block time hasn't elapsed
+                let blockEndTime = Block.blockEndDate(for: blockIndex)
+
+                if Date() < blockEndTime {
+                    // Block still active - restart timer with merged data
+                    // Combine remote snapshot segments with any additional data
+                    var mergedSegments = remoteBlock.segments
+
+                    // If remote snapshot has more recent segments, use those
+                    if !remoteSnapshot.segments.isEmpty {
+                        // Use snapshot segments as they're more recent
+                        mergedSegments = remoteBlock.segments
+                        // Add snapshot segments that aren't already in block segments
+                        for seg in remoteSnapshot.segments {
+                            if !mergedSegments.contains(where: { $0.startElapsed == seg.startElapsed && $0.type == seg.type }) {
+                                mergedSegments.append(seg)
+                            }
+                        }
+                        mergedSegments = BlockSegment.normalized(mergedSegments)
+                    }
+
+                    let totalSeconds = mergedSegments.reduce(0) { $0 + $1.seconds }
+                    let visualFill = min(Double(totalSeconds) / 1200.0, 1.0)
+
+                    // Get category/label from snapshot
+                    let category = remoteSnapshot.currentCategory ?? remoteBlock.category
+                    let label = remoteSnapshot.segments.last(where: { $0.type == .work })?.label ?? remoteBlock.label
+                    let isBreak = remoteSnapshot.currentType == .break
+
+                    // Stop current timer and restart with merged data
+                    timerManager.stopTimerWithoutSaving()
+
+                    timerManager.startTimer(
+                        for: blockIndex,
+                        date: remoteBlock.date,
+                        isBreakMode: isBreak,
+                        category: category,
+                        label: label,
+                        existingSegments: mergedSegments,
+                        existingVisualFill: visualFill
+                    )
+
+                    print("🔄 Restarted timer with merged remote data: \(mergedSegments.count) segments, \(totalSeconds)s, fill: \(Int(visualFill * 100))%")
+
+                    // Update local block state
+                    if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                        blockManager.blocks[idx].segments = mergedSegments
+                        blockManager.blocks[idx].visualFill = visualFill
+                        blockManager.blocks[idx].usedSeconds = totalSeconds
+                    }
+                } else {
+                    // Block time has passed - promote snapshot to done
+                    print("🔄 Block time has passed - promoting remote snapshot to done")
+                    timerManager.stopTimerWithoutSaving()
+
+                    var finalBlock = remoteBlock
+                    finalBlock.status = .done
+                    // Use snapshot segments + any additional time
+                    var finalSegments = remoteBlock.segments
+                    if !remoteSnapshot.segments.isEmpty {
+                        finalSegments = BlockSegment.normalized(remoteBlock.segments + remoteSnapshot.segments)
+                    }
+                    finalBlock.segments = finalSegments
+                    finalBlock.visualFill = 1.0
+                    finalBlock.activeRunSnapshot = nil
+
+                    await blockManager.saveBlock(finalBlock)
+
+                    NotificationManager.shared.cancelAllNotifications()
+                    WidgetDataProvider.shared.endLiveActivity()
+                }
+            }
+            return
+        }
+
+        // Case 3: Remote has more segments than local - use remote data
+        let remoteSegmentSeconds = remoteBlock.segments.reduce(0) { $0 + $1.seconds }
+        let localSegmentSeconds = localBlock.segments.reduce(0) { $0 + $1.seconds }
+
+        if remoteSegmentSeconds > localSegmentSeconds {
+            print("🔄 Remote block \(blockIndex) has more progress (\(remoteSegmentSeconds)s vs \(localSegmentSeconds)s) - using remote")
+
+            let blockEndTime = Block.blockEndDate(for: blockIndex)
+
+            if Date() < blockEndTime && timerManager.currentBlockIndex == blockIndex {
+                // Block still active - restart with remote segments
+                let lastWorkSegment = remoteBlock.segments.last(where: { $0.type == .work })
+                let category = lastWorkSegment?.category ?? remoteBlock.category
+                let label = lastWorkSegment?.label ?? remoteBlock.label
+                let isBreak = remoteBlock.segments.last?.type == .break
+
+                timerManager.stopTimerWithoutSaving()
+
+                timerManager.startTimer(
+                    for: blockIndex,
+                    date: remoteBlock.date,
+                    isBreakMode: isBreak,
+                    category: category,
+                    label: label,
+                    existingSegments: remoteBlock.segments,
+                    existingVisualFill: remoteBlock.visualFill
+                )
+
+                print("🔄 Restarted timer with remote segments")
+
+                // Update local block state
+                if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                    blockManager.blocks[idx] = remoteBlock
+                }
+            }
+        }
+    }
+
+    /// Pre-start remote check - checks Supabase before starting a timer
+    /// Returns (existingSegments, visualFill, shouldStart) tuple
+    private func preStartRemoteCheck(blockIndex: Int, date: String) async -> (segments: [BlockSegment], visualFill: Double, shouldStart: Bool) {
+        print("🔄 preStartRemoteCheck: Checking remote state for block \(blockIndex)")
+
+        // Fetch fresh block from Supabase
+        guard let remoteBlock = await blockManager.fetchBlockFromRemote(blockIndex: blockIndex, date: date) else {
+            // No remote block - safe to start with local data
+            let localBlock = blockManager.blocks.first { $0.blockIndex == blockIndex && $0.date == date }
+            return (localBlock?.segments ?? [], localBlock?.visualFill ?? 0, true)
+        }
+
+        // If remote block is already done, don't start timer
+        if remoteBlock.status == .done {
+            print("🔄 preStartRemoteCheck: Block \(blockIndex) already done on another device")
+
+            // Update local state with remote data
+            if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blockManager.blocks[idx] = remoteBlock
+            }
+
+            return (remoteBlock.segments, remoteBlock.visualFill, false)
+        }
+
+        // If remote has activeRunSnapshot, promote it to segments
+        if let snapshot = remoteBlock.activeRunSnapshot {
+            print("🔄 preStartRemoteCheck: Block \(blockIndex) has activeRunSnapshot from another device")
+
+            // Combine existing segments with snapshot segments
+            var mergedSegments = remoteBlock.segments
+            if !snapshot.segments.isEmpty {
+                mergedSegments = BlockSegment.normalized(remoteBlock.segments + snapshot.segments)
+            }
+
+            let totalSeconds = mergedSegments.reduce(0) { $0 + $1.seconds }
+            let visualFill = min(Double(totalSeconds) / 1200.0, 1.0)
+
+            // Update local state
+            if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blockManager.blocks[idx].segments = mergedSegments
+                blockManager.blocks[idx].visualFill = visualFill
+                blockManager.blocks[idx].usedSeconds = totalSeconds
+                blockManager.blocks[idx].activeRunSnapshot = nil  // Clear since we've promoted it
+            }
+
+            return (mergedSegments, visualFill, true)
+        }
+
+        // Use remote data if it has more progress
+        let localBlock = blockManager.blocks.first { $0.blockIndex == blockIndex && $0.date == date }
+        let remoteSegmentSeconds = remoteBlock.segments.reduce(0) { $0 + $1.seconds }
+        let localSegmentSeconds = (localBlock?.segments ?? []).reduce(0) { $0 + $1.seconds }
+
+        if remoteSegmentSeconds > localSegmentSeconds {
+            print("🔄 preStartRemoteCheck: Using remote segments (\(remoteSegmentSeconds)s > \(localSegmentSeconds)s)")
+
+            // Update local state
+            if let idx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blockManager.blocks[idx] = remoteBlock
+            }
+
+            return (remoteBlock.segments, remoteBlock.visualFill, true)
+        }
+
+        // Use local data
+        return (localBlock?.segments ?? [], localBlock?.visualFill ?? 0, true)
+    }
+
+    /// Parse ISO8601 date string to Date
+    private func parseISO8601Date(_ dateString: String?) -> Date? {
+        guard let dateString = dateString else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: dateString) {
+            return date
+        }
+        // Try without fractional seconds
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: dateString)
+    }
+
     // MARK: - Dialog Actions
 
     private func handleContinueWork(skipLiveActivityRestart: Bool = false) {
@@ -1020,115 +1292,121 @@ struct MainView: View {
         let category = wasBreak ? nil : timerManager.currentCategory
         let label = wasBreak ? "Break" : timerManager.currentLabel
 
-        // Get existing segments from next block (in case it has data from earlier)
-        // BUT if we're crossing a day boundary, use empty segments (new day = fresh block)
-        var existingSegments: [BlockSegment]
-        if isToday {
-            let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
-            existingSegments = nextBlock?.segments ?? []
-        } else {
-            // Day boundary crossed - new day's block is fresh, no existing segments
-            existingSegments = []
-        }
-
-        // CRITICAL: If time has elapsed on this block while we were backgrounded,
-        // create a segment for that elapsed time. This ensures the visual fill
-        // reflects the actual time that would have been worked.
-        // Check: elapsed > 5s AND (no existing segments OR existing segments are stale/don't cover elapsed time)
-        let elapsedSeconds = Int(elapsedSinceBlockStart)
-        let existingSegmentSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
-        print("📱 DEBUG: elapsedSeconds=\(elapsedSeconds), existingSegments=\(existingSegments.count) (\(existingSegmentSeconds)s)")
-
-        // Create elapsed segment if: enough time passed AND existing segments don't account for it
-        let additionalSeconds = elapsedSeconds - existingSegmentSeconds
-        if additionalSeconds > 5 {
-            // Time has elapsed that isn't covered by existing segments = returning from background
-            // Create a segment for the additional elapsed time
-            let elapsedSegment = BlockSegment(
-                type: wasBreak ? .break : .work,
-                seconds: min(additionalSeconds, 1200 - existingSegmentSeconds),  // Cap at remaining block duration
-                category: wasBreak ? nil : category,
-                label: wasBreak ? nil : label,
-                startElapsed: existingSegmentSeconds  // Start where existing segments end
-            )
-            existingSegments.append(elapsedSegment)
-            print("📱 Created elapsed segment: \(additionalSeconds)s of \(wasBreak ? "break" : "work") for backgrounded time (total now: \(existingSegments.reduce(0) { $0 + $1.seconds })s)")
-
-            // Calculate visual fill for total elapsed time
-            let totalSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
-            let elapsedVisualFill = min(Double(totalSeconds) / 1200.0, 1.0)
-
-            // Update the block immediately with all segments
-            if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
-                blockManager.blocks[blockIdx].segments = existingSegments
-                blockManager.blocks[blockIdx].category = category ?? blockManager.blocks[blockIdx].category
-                blockManager.blocks[blockIdx].label = label ?? blockManager.blocks[blockIdx].label
-                blockManager.blocks[blockIdx].usedSeconds = totalSeconds
-                blockManager.blocks[blockIdx].visualFill = elapsedVisualFill
-                blockManager.blocks[blockIdx].progress = elapsedVisualFill * 100
-            }
-        } else if existingSegments.isEmpty && (category != nil || label != nil) {
-            // No elapsed time but we have category/label to set
-            if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
-                blockManager.blocks[blockIdx].category = category
-                blockManager.blocks[blockIdx].label = label
-            }
-        }
-
-        let totalExistingSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
-        print("📱 Passing \(existingSegments.count) segments (\(totalExistingSeconds)s) to continueToNextBlock")
-
-        timerManager.continueToNextBlock(
-            nextBlockIndex: nextBlockIndex,
-            date: todayString,
-            isBreakMode: wasBreak,
-            category: category,
-            label: label,
-            existingSegments: existingSegments
-        )
-
-        // Start Live Activity (skip during auto-continue - existing activity handles it)
-        if !skipLiveActivityRestart {
-            startWidgetLiveActivity(
-                blockIndex: nextBlockIndex,
-                isBreak: wasBreak,
-                endAt: Block.blockEndDate(for: nextBlockIndex),
-                category: category,
-                label: label
-            )
-        } else {
-            print("📱 Skipping Live Activity restart - existing activity continues autonomously")
-        }
-
-        // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
-        // NOTE: flipToNextDayIfGridWrapped runs FIRST to ensure blocks are loaded for the correct day
-        // before activateBlockForTimer and saveBlockForContinue operate on them
+        // Cross-device sync: Check remote state before starting timer
         Task {
+            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: nextBlockIndex, date: todayString)
+
+            // If remote says block is already done, don't start
+            if !shouldStart {
+                print("📱 handleContinueWork: Block \(nextBlockIndex) already done on another device, not starting timer")
+                return
+            }
+
+            // Get existing segments - use remote data if available, otherwise local
+            var existingSegments: [BlockSegment]
+            var existingVisualFill: Double
+
+            if !remoteSegments.isEmpty {
+                existingSegments = remoteSegments
+                existingVisualFill = remoteVisualFill
+            } else if isToday {
+                let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
+                existingSegments = nextBlock?.segments ?? []
+                existingVisualFill = nextBlock?.visualFill ?? 0
+            } else {
+                // Day boundary crossed - new day's block is fresh
+                existingSegments = []
+                existingVisualFill = 0
+            }
+
+            // CRITICAL: If time has elapsed on this block while we were backgrounded,
+            // create a segment for that elapsed time.
+            let elapsedSeconds = Int(elapsedSinceBlockStart)
+            let existingSegmentSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+            print("📱 DEBUG: elapsedSeconds=\(elapsedSeconds), existingSegments=\(existingSegments.count) (\(existingSegmentSeconds)s)")
+
+            // Create elapsed segment if: enough time passed AND existing segments don't account for it
+            let additionalSeconds = elapsedSeconds - existingSegmentSeconds
+            if additionalSeconds > 5 {
+                let elapsedSegment = BlockSegment(
+                    type: wasBreak ? .break : .work,
+                    seconds: min(additionalSeconds, 1200 - existingSegmentSeconds),
+                    category: wasBreak ? nil : category,
+                    label: wasBreak ? nil : label,
+                    startElapsed: existingSegmentSeconds
+                )
+                existingSegments.append(elapsedSegment)
+                print("📱 Created elapsed segment: \(additionalSeconds)s of \(wasBreak ? "break" : "work") for backgrounded time")
+
+                let totalSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+                existingVisualFill = min(Double(totalSeconds) / 1200.0, 1.0)
+
+                if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
+                    blockManager.blocks[blockIdx].segments = existingSegments
+                    blockManager.blocks[blockIdx].category = category ?? blockManager.blocks[blockIdx].category
+                    blockManager.blocks[blockIdx].label = label ?? blockManager.blocks[blockIdx].label
+                    blockManager.blocks[blockIdx].usedSeconds = totalSeconds
+                    blockManager.blocks[blockIdx].visualFill = existingVisualFill
+                    blockManager.blocks[blockIdx].progress = existingVisualFill * 100
+                }
+            } else if existingSegments.isEmpty && (category != nil || label != nil) {
+                if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == nextBlockIndex }) {
+                    blockManager.blocks[blockIdx].category = category
+                    blockManager.blocks[blockIdx].label = label
+                }
+            }
+
+            let totalExistingSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+            print("📱 Passing \(existingSegments.count) segments (\(totalExistingSeconds)s) to continueToNextBlock")
+
+            timerManager.continueToNextBlock(
+                nextBlockIndex: nextBlockIndex,
+                date: todayString,
+                isBreakMode: wasBreak,
+                category: category,
+                label: label,
+                existingSegments: existingSegments
+            )
+
+            // Start Live Activity (skip during auto-continue - existing activity handles it)
+            if !skipLiveActivityRestart {
+                startWidgetLiveActivity(
+                    blockIndex: nextBlockIndex,
+                    isBreak: wasBreak,
+                    endAt: Block.blockEndDate(for: nextBlockIndex),
+                    category: category,
+                    label: label
+                )
+            } else {
+                print("📱 Skipping Live Activity restart - existing activity continues autonomously")
+            }
+
+            // Activate and save the block
             await flipToNextDayIfGridWrapped(nextBlockIndex: nextBlockIndex)
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
             await saveBlockForContinue(blockIndex: nextBlockIndex, category: category, label: label)
-        }
 
-        // Schedule notification — break gets 5-min reminder, work gets block boundary
-        let willCheckIn = timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn - 1
-        if wasBreak {
-            NotificationManager.shared.scheduleTimerComplete(
-                at: Date().addingTimeInterval(300),
-                blockIndex: nextBlockIndex,
-                isBreak: true,
-                isCheckIn: willCheckIn
-            )
-        } else {
-            NotificationManager.shared.scheduleTimerComplete(
-                at: Block.blockEndDate(for: nextBlockIndex),
-                blockIndex: nextBlockIndex,
-                isBreak: false,
-                isCheckIn: willCheckIn
-            )
-        }
+            // Schedule notification — break gets 5-min reminder, work gets block boundary
+            let willCheckIn = timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn - 1
+            if wasBreak {
+                NotificationManager.shared.scheduleTimerComplete(
+                    at: Date().addingTimeInterval(300),
+                    blockIndex: nextBlockIndex,
+                    isBreak: true,
+                    isCheckIn: willCheckIn
+                )
+            } else {
+                NotificationManager.shared.scheduleTimerComplete(
+                    at: Block.blockEndDate(for: nextBlockIndex),
+                    blockIndex: nextBlockIndex,
+                    isBreak: false,
+                    isCheckIn: willCheckIn
+                )
+            }
 
-        // Trigger segment focus change (handles collapse/expand/scroll)
-        NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
+            // Trigger segment focus change (handles collapse/expand/scroll)
+            NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
+        }
     }
 
     private func handleTakeBreak() {
@@ -1136,34 +1414,50 @@ struct MainView: View {
         let blockIndex = Block.getCurrentBlockIndex()
         blocksWithTimerUsage.insert(blockIndex)
 
-        // Get existing segments from this block (in case it has data from earlier)
-        let targetBlock = blockManager.blocks.first { $0.blockIndex == blockIndex }
-        let existingSegments = targetBlock?.segments ?? []
+        // Cross-device sync: Check remote state before starting timer
+        Task {
+            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: blockIndex, date: todayString)
 
-        timerManager.continueToNextBlock(
-            nextBlockIndex: blockIndex,
-            date: todayString,
-            isBreakMode: true,
-            category: nil,
-            label: "Break",
-            existingSegments: existingSegments
-        )
+            // If remote says block is already done, don't start
+            if !shouldStart {
+                print("📱 handleTakeBreak: Block \(blockIndex) already done on another device, not starting timer")
+                return
+            }
 
-        // Start Live Activity — break timer runs to block boundary
-        startWidgetLiveActivity(
-            blockIndex: blockIndex,
-            isBreak: true,
-            endAt: Block.blockEndDate(for: blockIndex),
-            category: nil,
-            label: "Break"
-        )
+            // Use remote segments if available, otherwise local
+            let existingSegments: [BlockSegment]
+            if !remoteSegments.isEmpty {
+                existingSegments = remoteSegments
+            } else {
+                let targetBlock = blockManager.blocks.first { $0.blockIndex == blockIndex }
+                existingSegments = targetBlock?.segments ?? []
+            }
 
-        // Schedule notification for break reminder (5 minutes, not block end)
-        NotificationManager.shared.scheduleTimerComplete(
-            at: Date().addingTimeInterval(300),
-            blockIndex: blockIndex,
-            isBreak: true
-        )
+            timerManager.continueToNextBlock(
+                nextBlockIndex: blockIndex,
+                date: todayString,
+                isBreakMode: true,
+                category: nil,
+                label: "Break",
+                existingSegments: existingSegments
+            )
+
+            // Start Live Activity — break timer runs to block boundary
+            startWidgetLiveActivity(
+                blockIndex: blockIndex,
+                isBreak: true,
+                endAt: Block.blockEndDate(for: blockIndex),
+                category: nil,
+                label: "Break"
+            )
+
+            // Schedule notification for break reminder (5 minutes, not block end)
+            NotificationManager.shared.scheduleTimerComplete(
+                at: Date().addingTimeInterval(300),
+                blockIndex: blockIndex,
+                isBreak: true
+            )
+        }
     }
 
     private func handleStartNewBlock() {
@@ -1234,53 +1528,60 @@ struct MainView: View {
         let category = timerManager.lastWorkCategory ?? timerManager.currentCategory
         let label = timerManager.lastWorkLabel ?? timerManager.currentLabel
 
-        // Get existing segments from next block (in case it has data from earlier)
-        // BUT if we're crossing a day boundary, use empty segments (new day = fresh block)
-        let existingSegments: [BlockSegment]
-        if isToday {
-            let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
-            existingSegments = nextBlock?.segments ?? []
-        } else {
-            // Day boundary crossed - new day's block is fresh, no existing segments
-            existingSegments = []
-        }
-
-        timerManager.continueToNextBlock(
-            nextBlockIndex: nextBlockIndex,
-            date: todayString,
-            isBreakMode: false,
-            category: category,
-            label: label,
-            existingSegments: existingSegments
-        )
-
-        // Start Live Activity
-        startWidgetLiveActivity(
-            blockIndex: nextBlockIndex,
-            isBreak: false,
-            endAt: Block.blockEndDate(for: nextBlockIndex),
-            category: category,
-            label: label
-        )
-
-        // Activate and save the block - this handles unmuting and auto-skipping previous muted blocks
-        // NOTE: flipToNextDayIfGridWrapped runs FIRST to ensure blocks are loaded for the correct day
-        // before activateBlockForTimer and saveBlockForContinue operate on them
+        // Cross-device sync: Check remote state before starting timer
         Task {
+            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: nextBlockIndex, date: todayString)
+
+            // If remote says block is already done, don't start
+            if !shouldStart {
+                print("📱 handleBackToWork: Block \(nextBlockIndex) already done on another device, not starting timer")
+                return
+            }
+
+            // Use remote segments if available, otherwise local
+            let existingSegments: [BlockSegment]
+            if !remoteSegments.isEmpty {
+                existingSegments = remoteSegments
+            } else if isToday {
+                let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
+                existingSegments = nextBlock?.segments ?? []
+            } else {
+                existingSegments = []
+            }
+
+            timerManager.continueToNextBlock(
+                nextBlockIndex: nextBlockIndex,
+                date: todayString,
+                isBreakMode: false,
+                category: category,
+                label: label,
+                existingSegments: existingSegments
+            )
+
+            // Start Live Activity
+            startWidgetLiveActivity(
+                blockIndex: nextBlockIndex,
+                isBreak: false,
+                endAt: Block.blockEndDate(for: nextBlockIndex),
+                category: category,
+                label: label
+            )
+
+            // Activate and save the block
             await flipToNextDayIfGridWrapped(nextBlockIndex: nextBlockIndex)
             await blockManager.activateBlockForTimer(blockIndex: nextBlockIndex)
             await saveBlockForContinue(blockIndex: nextBlockIndex, category: category, label: label)
+
+            // Schedule notification at next block's end time
+            NotificationManager.shared.scheduleTimerComplete(
+                at: Block.blockEndDate(for: nextBlockIndex),
+                blockIndex: nextBlockIndex,
+                isBreak: false
+            )
+
+            // Trigger segment focus change (handles collapse/expand/scroll)
+            NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
         }
-
-        // Schedule notification at next block's end time
-        NotificationManager.shared.scheduleTimerComplete(
-            at: Block.blockEndDate(for: nextBlockIndex),
-            blockIndex: nextBlockIndex,
-            isBreak: false
-        )
-
-        // Trigger segment focus change (handles collapse/expand/scroll)
-        NotificationCenter.default.post(name: .segmentFocusChanged, object: nil)
     }
 
     private func handleStop() {
@@ -1437,8 +1738,10 @@ struct MainView: View {
 
         // The timer was meant to run to block boundary - credit the remaining time
         // (This handles the case where app died mid-timer)
-        let blockDuration = 1200 // 20 minutes
-        let remainingSeconds = max(0, blockDuration - snapshotSeconds)
+        // Use snapshot.initialRealTime (the actual duration when the timer started),
+        // not a hardcoded 1200 — the timer may have started mid-block with less time remaining.
+        let timerDuration = Int(snapshot.initialRealTime)
+        let remainingSeconds = max(0, timerDuration - snapshotSeconds)
 
         var finalSegments = snapshotSegments
         if remainingSeconds > 0 {
@@ -1562,8 +1865,11 @@ struct MainView: View {
         // Fill blocks from (originalBlockIndex + 1) up to (currentWallClockBlock - 1)
         // These are complete blocks that auto-continued and ran their full duration
         for blockIdx in (originalBlockIndex + 1)..<currentWallClockBlock {
-            // Check if we've hit the check-in limit
-            if timerManager.blocksSinceLastInteraction + blocksAutoFilled >= limit {
+            // Check if we've hit the check-in limit.
+            // Only check blocksSinceLastInteraction (incremented inside the loop) —
+            // adding blocksAutoFilled here double-counts and exits one block too early,
+            // filling 2 blocks instead of 3 with the default limit of 3.
+            if timerManager.blocksSinceLastInteraction >= limit {
                 print("📱 Check-in limit reached after \(blocksAutoFilled) retroactive blocks")
                 break
             }
@@ -1730,38 +2036,48 @@ struct MainView: View {
         plannedBlock = nil
         blocksWithTimerUsage.insert(block.blockIndex)
 
-        // If this is a night block, activate it and auto-skip previous unused night blocks
+        // Cross-device sync: Check remote state before starting timer
         Task {
+            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: block.blockIndex, date: todayString)
+
+            // If remote says block is already done, don't start
+            if !shouldStart {
+                print("📱 handleStartPlannedBlock: Block \(block.blockIndex) already done on another device, not starting timer")
+                return
+            }
+
+            // Use remote segments if available
+            let existingSegments = !remoteSegments.isEmpty ? remoteSegments : block.segments
+            let existingVisualFill = !remoteSegments.isEmpty ? remoteVisualFill : block.visualFill
+
             await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
+
+            timerManager.startTimer(
+                for: block.blockIndex,
+                date: todayString,
+                isBreakMode: false,
+                category: block.category,
+                label: block.label,
+                existingSegments: existingSegments,
+                existingVisualFill: existingVisualFill
+            )
+
+            // Start Live Activity
+            startWidgetLiveActivity(
+                blockIndex: block.blockIndex,
+                isBreak: false,
+                endAt: Block.blockEndDate(for: block.blockIndex),
+                category: block.category,
+                label: block.label
+            )
+
+            // Schedule notification at actual block end time
+            NotificationManager.shared.scheduleTimerComplete(
+                at: Block.blockEndDate(for: block.blockIndex),
+                blockIndex: block.blockIndex,
+                isBreak: false
+            )
         }
-
-        // Duration calculated automatically based on block boundary
-        // Pass existing segments and visual fill so timer continues from where it left off
-        timerManager.startTimer(
-            for: block.blockIndex,
-            date: todayString,
-            isBreakMode: false,
-            category: block.category,
-            label: block.label,
-            existingSegments: block.segments,
-            existingVisualFill: block.visualFill
-        )
-
-        // Start Live Activity
-        startWidgetLiveActivity(
-            blockIndex: block.blockIndex,
-            isBreak: false,
-            endAt: Block.blockEndDate(for: block.blockIndex),
-            category: block.category,
-            label: block.label
-        )
-
-        // Schedule notification at actual block end time
-        NotificationManager.shared.scheduleTimerComplete(
-            at: Block.blockEndDate(for: block.blockIndex),
-            blockIndex: block.blockIndex,
-            isBreak: false
-        )
     }
 
     private func handleStartPlannedBlockAsBreak(_ block: Block) {
@@ -1769,32 +2085,47 @@ struct MainView: View {
         plannedBlock = nil
         blocksWithTimerUsage.insert(block.blockIndex)
 
-        // Start a break instead of the planned work (timer runs to block boundary)
-        timerManager.startTimer(
-            for: block.blockIndex,
-            date: todayString,
-            isBreakMode: true,
-            category: nil,
-            label: "Break",
-            existingSegments: block.segments,
-            existingVisualFill: block.visualFill
-        )
+        // Cross-device sync: Check remote state before starting timer
+        Task {
+            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: block.blockIndex, date: todayString)
 
-        // Start Live Activity — break timer runs to block boundary
-        startWidgetLiveActivity(
-            blockIndex: block.blockIndex,
-            isBreak: true,
-            endAt: Block.blockEndDate(for: block.blockIndex),
-            category: nil,
-            label: "Break"
-        )
+            // If remote says block is already done, don't start
+            if !shouldStart {
+                print("📱 handleStartPlannedBlockAsBreak: Block \(block.blockIndex) already done on another device, not starting timer")
+                return
+            }
 
-        // Schedule notification for break reminder (5 minutes, not block end)
-        NotificationManager.shared.scheduleTimerComplete(
-            at: Date().addingTimeInterval(300),
-            blockIndex: block.blockIndex,
-            isBreak: true
-        )
+            // Use remote segments if available
+            let existingSegments = !remoteSegments.isEmpty ? remoteSegments : block.segments
+            let existingVisualFill = !remoteSegments.isEmpty ? remoteVisualFill : block.visualFill
+
+            // Start a break instead of the planned work (timer runs to block boundary)
+            timerManager.startTimer(
+                for: block.blockIndex,
+                date: todayString,
+                isBreakMode: true,
+                category: nil,
+                label: "Break",
+                existingSegments: existingSegments,
+                existingVisualFill: existingVisualFill
+            )
+
+            // Start Live Activity — break timer runs to block boundary
+            startWidgetLiveActivity(
+                blockIndex: block.blockIndex,
+                isBreak: true,
+                endAt: Block.blockEndDate(for: block.blockIndex),
+                category: nil,
+                label: "Break"
+            )
+
+            // Schedule notification for break reminder (5 minutes, not block end)
+            NotificationManager.shared.scheduleTimerComplete(
+                at: Date().addingTimeInterval(300),
+                blockIndex: block.blockIndex,
+                isBreak: true
+            )
+        }
     }
 
     private func handleSkipPlannedBlock(_ block: Block) {

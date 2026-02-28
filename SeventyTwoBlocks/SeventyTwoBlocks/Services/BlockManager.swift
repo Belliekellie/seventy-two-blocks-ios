@@ -80,6 +80,43 @@ final class BlockManager: ObservableObject {
         }
     }
 
+    // MARK: - Fetch Single Block from Remote
+
+    /// Fetch a single block fresh from Supabase (bypasses local cache)
+    /// Used for cross-device sync to check if another device has modified the block
+    func fetchBlockFromRemote(blockIndex: Int, date: String) async -> Block? {
+        do {
+            let db = await supabaseDBAsync()
+
+            guard let session = try? await supabaseAuth.session else {
+                print("⚠️ fetchBlockFromRemote: No session available")
+                return nil
+            }
+
+            let userId = session.user.id.uuidString
+
+            let fetchedBlocks: [Block] = try await db
+                .from("blocks")
+                .select()
+                .eq("user_id", value: userId)
+                .eq("date", value: date)
+                .eq("block_index", value: blockIndex)
+                .execute()
+                .value
+
+            if let block = fetchedBlocks.first {
+                print("🌐 Fetched remote block \(blockIndex): status=\(block.status), segments=\(block.segments.count), updatedAt=\(block.updatedAt ?? "nil")")
+                return block
+            } else {
+                print("🌐 No remote block found for index \(blockIndex) on \(date)")
+                return nil
+            }
+        } catch {
+            print("❌ fetchBlockFromRemote error: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Reload Current Date
 
     func reloadBlocks() async {

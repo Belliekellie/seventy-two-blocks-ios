@@ -290,6 +290,52 @@ final class TimerManager: ObservableObject {
         print("⏱️ Timer started for block \(blockIndex) - initialTime: \(actualDuration)s, preciseInterval: \(String(format: "%.3f", preciseInterval))s, isBreak: \(isBreakMode), existingSegments: \(existingSegments.count), previousProportion: \(String(format: "%.1f%%", previousVisualProportion * 100)), sessionScaleFactor: \(String(format: "%.8f", sessionScaleFactor))")
     }
 
+    /// Stop timer without triggering completion callbacks
+    /// Used when another device has already handled the block (cross-device sync)
+    func stopTimerWithoutSaving() {
+        guard isActive || isPaused else { return }
+
+        print("⏱️ stopTimerWithoutSaving - clearing timer state without saving")
+
+        // Stop tick timers
+        timer?.invalidate()
+        timer = nil
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+        pausedExpiryTimer?.invalidate()
+        pausedExpiryTimer = nil
+
+        // Clear all state without calling onTimerComplete
+        isActive = false
+        isPaused = false
+        timeLeft = 0
+        progress = 0
+        breakProgress = 0
+        secondsUsedAtPause = 0
+        currentBlockIndex = nil
+        currentDate = nil
+        startedAt = nil
+        endAt = nil
+        activeRunId = nil
+        breakStartTime = nil
+        breakNotifyAt = nil
+        previousSegments = []
+        liveSegments = []
+        currentSegmentStartElapsed = 0
+        currentSegmentType = .work
+        sessionScaleFactor = 1.0 / 1200.0
+        previousVisualProportion = 0
+        lastReportedProgressQuarter = -1
+        isInCheckInGracePeriod = false
+        currentCategory = nil
+        currentLabel = nil
+        lastWorkCategory = nil
+        lastWorkLabel = nil
+
+        // Notify widget of timer stop
+        onWidgetUpdate?()
+    }
+
     func stopTimer(markComplete: Bool = false) {
         // Allow stopping when active OR paused
         guard isActive || isPaused else { return }
