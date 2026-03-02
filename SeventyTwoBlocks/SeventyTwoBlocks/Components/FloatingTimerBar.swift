@@ -253,6 +253,7 @@ struct FloatingTimerBar: View {
                     // Stop button - does NOT mark complete (preserves partial fill)
                     Button {
                         AudioManager.shared.triggerHapticFeedback(.medium)
+                        timerManager.resetInteractionCounter()
                         timerManager.stopTimer(markComplete: false)
                         NotificationManager.shared.cancelAllNotifications()
                         WidgetDataProvider.shared.endLiveActivity()

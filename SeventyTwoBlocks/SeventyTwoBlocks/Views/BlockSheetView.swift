@@ -511,6 +511,10 @@ struct BlockSheetView: View {
                                     Spacer()
                                     Button("Done") {
                                         labelFieldFocused = false
+                                        Task {
+                                            await saveBlock()
+                                            dismiss()
+                                        }
                                     }
                                 }
                             }
@@ -993,6 +997,7 @@ struct BlockSheetView: View {
             await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
         }
 
+        timerManager.resetInteractionCounter()
         timerManager.startTimer(
             for: block.blockIndex,
             date: dateString,
@@ -1028,6 +1033,7 @@ struct BlockSheetView: View {
 
         // Duration calculated automatically based on block boundary
         // Pass existing segments and visual fill so timer continues from where it left off
+        timerManager.resetInteractionCounter()
         timerManager.startTimer(
             for: block.blockIndex,
             date: dateString,

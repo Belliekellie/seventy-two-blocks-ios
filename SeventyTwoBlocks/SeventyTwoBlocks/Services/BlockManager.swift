@@ -105,7 +105,7 @@ final class BlockManager: ObservableObject {
                 .value
 
             if let block = fetchedBlocks.first {
-                print("🌐 Fetched remote block \(blockIndex): status=\(block.status), segments=\(block.segments.count), updatedAt=\(block.updatedAt ?? "nil")")
+                print("🌐 Fetched remote block \(blockIndex): status=\(block.status), segments=\(block.segments.count), updatedAt=\(block.updatedAt)")
                 return block
             } else {
                 print("🌐 No remote block found for index \(blockIndex) on \(date)")

@@ -55,8 +55,12 @@ struct MainView: View {
         return formatter.string(from: selectedDate) == todayString
     }
 
+    private var isAppVisibleToUser: Bool {
+        UIApplication.shared.applicationState != .background
+    }
+
     private var shouldSuppressAutoContinue: Bool {
-        timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn
+        timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn && !isAppVisibleToUser
     }
 
     /// Count of completed (done) blocks today
@@ -141,7 +145,7 @@ struct MainView: View {
                     totalDoneBlocks: completedBlocks,
                     timerEndedAt: timerManager.timerCompletedAt ?? Date(),
                     isBreakMode: timerManager.isBreak,
-                    suppressAutoContinue: shouldSuppressAutoContinue,
+                    suppressAutoContinue: timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn,
                     isBackgroundCompletion: false,
                     onCheckIn: { timerManager.resetInteractionCounter() },
                     onContinue: {
@@ -342,10 +346,8 @@ struct MainView: View {
                     // Immediately suppress the dialog and enter grace period
                     timerManager.showTimerComplete = false
                     timerManager.incrementInteractionCounter()
-                    // Start the next block - timer will run during grace period
-                    handleContinueWork(skipLiveActivityRestart: true)
-                    // Set grace period flag AFTER starting timer (startTimer resets it)
-                    timerManager.isInCheckInGracePeriod = true
+                    // Start the next block - grace period flag set INSIDE the Task after timer starts
+                    handleContinueWork(skipLiveActivityRestart: true, enterGracePeriod: true)
                     return
                 }
 
@@ -819,6 +821,7 @@ struct MainView: View {
         updatedBlock.usedSeconds = actualUsedSeconds
         updatedBlock.progress = actualProgress
         updatedBlock.visualFill = visualFill  // Save actual visual fill reached
+        updatedBlock.activeRunSnapshot = nil  // Clear snapshot — timer is no longer running
 
         // Only mark as done if block time has elapsed
         // User might stop mid-block and resume later in the same block window
@@ -1025,7 +1028,7 @@ struct MainView: View {
 
         // If remote is newer, handle the conflict
         if let remoteTime = remoteUpdatedAt, let localTime = localUpdatedAt, remoteTime > localTime {
-            print("🔄 Remote block is newer (remote: \(remoteBlock.updatedAt ?? "nil"), local: \(localBlock.updatedAt ?? "nil"))")
+            print("🔄 Remote block is newer (remote: \(remoteBlock.updatedAt), local: \(localBlock.updatedAt))")
             await handleRemoteBlockConflict(remoteBlock: remoteBlock, localBlock: localBlock)
         } else if remoteUpdatedAt != nil && localUpdatedAt == nil {
             // Remote has timestamp, local doesn't - prefer remote
@@ -1261,7 +1264,7 @@ struct MainView: View {
 
     // MARK: - Dialog Actions
 
-    private func handleContinueWork(skipLiveActivityRestart: Bool = false) {
+    private func handleContinueWork(skipLiveActivityRestart: Bool = false, enterGracePeriod: Bool = false) {
         // ALWAYS continue on the CURRENT TIME block
         // The timer completed at the block boundary, so the current block IS the next one
         // If the user waited before clicking, we still go to wherever "now" is
@@ -1368,6 +1371,11 @@ struct MainView: View {
                 existingSegments: existingSegments
             )
 
+            // Set grace period AFTER timer started (stopTimerInternal already ran inside continueToNextBlock)
+            if enterGracePeriod {
+                timerManager.isInCheckInGracePeriod = true
+            }
+
             // Start Live Activity (skip during auto-continue - existing activity handles it)
             if !skipLiveActivityRestart {
                 startWidgetLiveActivity(
@@ -1416,7 +1424,7 @@ struct MainView: View {
 
         // Cross-device sync: Check remote state before starting timer
         Task {
-            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: blockIndex, date: todayString)
+            let (remoteSegments, _, shouldStart) = await preStartRemoteCheck(blockIndex: blockIndex, date: todayString)
 
             // If remote says block is already done, don't start
             if !shouldStart {
@@ -1530,7 +1538,7 @@ struct MainView: View {
 
         // Cross-device sync: Check remote state before starting timer
         Task {
-            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: nextBlockIndex, date: todayString)
+            let (remoteSegments, _, shouldStart) = await preStartRemoteCheck(blockIndex: nextBlockIndex, date: todayString)
 
             // If remote says block is already done, don't start
             if !shouldStart {
