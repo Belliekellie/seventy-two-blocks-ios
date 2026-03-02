@@ -18,6 +18,7 @@ struct MainView: View {
     @State private var showDayEndDialog = false
     @State private var continuedPastDayEnd = false
     @State private var showStaleNotificationAlert = false
+    @State private var isInitialBlockHydration = true
 
     private var currentBlockIndex: Int {
         Block.getCurrentBlockIndex()
@@ -55,8 +56,14 @@ struct MainView: View {
         return formatter.string(from: selectedDate) == todayString
     }
 
+    private var isAppForegroundActive: Bool {
+        UIApplication.shared.applicationState == .active
+    }
+
     private var shouldSuppressAutoContinue: Bool {
-        timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn
+        // Only enforce check-in grace suppression when app is not actively being watched.
+        // If user is in-app, keep normal completion flow (continue/check-in dialog) and never silently downgrade to skipped.
+        timerManager.blocksSinceLastInteraction >= blocksUntilCheckIn && !isAppForegroundActive
     }
 
     /// Count of completed (done) blocks today
@@ -66,8 +73,8 @@ struct MainView: View {
 
     var body: some View {
         ZStack {
-            // Loading overlay while blocks are loading
-            if blockManager.blocks.isEmpty {
+            // Loading overlay while blocks are loading / hydrating statuses
+            if blockManager.blocks.isEmpty || isInitialBlockHydration {
                 VStack {
                     ProgressView()
                         .scaleEffect(1.5)
@@ -440,21 +447,30 @@ struct MainView: View {
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .task {
-            async let blocksLoad: Void = blockManager.loadBlocks(for: selectedDate)
-            async let goalsLoad: Void = goalManager.loadGoals(for: selectedDate)
-            _ = await (blocksLoad, goalsLoad)
+            isInitialBlockHydration = true
+
+            // Load blocks first so we can normalize statuses before first paint
+            await blockManager.loadBlocks(for: selectedDate)
+
+            // Run auto-skip ASAP on initial load for today to avoid "idle then skipped" flicker
+            if isToday {
+                await blockManager.processAutoSkip(
+                    currentBlockIndex: currentBlockIndex,
+                    timerBlockIndex: timerManager.currentBlockIndex,
+                    blocksWithTimerUsage: blocksWithTimerUsage
+                )
+            }
+
+            // Goals can load in parallel after block hydration
+            await goalManager.loadGoals(for: selectedDate)
+            isInitialBlockHydration = false
+
             setupTimerCallbacks()
             _ = await NotificationManager.shared.requestPermission()
             NotificationManager.shared.setupNotificationCategories()
 
             // Check for orphaned timer session (app was terminated while timer running)
-            // This must run after blocks load but before auto-skip
             await recoverOrphanedTimerSession()
-
-            // Run auto-skip on initial load for today
-            if isToday {
-                await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
-            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             // 0. Cross-device sync: Check if another device modified the block while we were away
@@ -650,9 +666,17 @@ struct MainView: View {
         }
         .onChange(of: selectedDate) { _, newDate in
             Task {
-                async let blocksLoad: Void = blockManager.loadBlocks(for: newDate)
-                async let goalsLoad: Void = goalManager.loadGoals(for: newDate)
-                _ = await (blocksLoad, goalsLoad)
+                isInitialBlockHydration = true
+                await blockManager.loadBlocks(for: newDate)
+                if isToday {
+                    await blockManager.processAutoSkip(
+                        currentBlockIndex: currentBlockIndex,
+                        timerBlockIndex: timerManager.currentBlockIndex,
+                        blocksWithTimerUsage: blocksWithTimerUsage
+                    )
+                }
+                await goalManager.loadGoals(for: newDate)
+                isInitialBlockHydration = false
             }
         }
         .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
