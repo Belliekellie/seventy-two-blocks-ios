@@ -26,6 +26,7 @@ final class BlockManager: ObservableObject {
 
         // Load categories if not loaded yet, or retry if we fell back to defaults
         if !categoriesLoaded || categoriesAreDefaults {
+            categoriesLoaded = true  // Set immediately to prevent duplicate loads from parallel calls
             await loadCategories()
         }
 

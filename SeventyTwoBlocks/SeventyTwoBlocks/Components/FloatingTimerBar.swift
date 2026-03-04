@@ -169,7 +169,7 @@ struct FloatingTimerBar: View {
                             ? liveStartOffset / Double(totalPreviousSeconds)
                             : 1.0 / 1200.0
 
-                        ForEach(Array(timerManager.previousSegments.enumerated()), id: \.element.compositeId) { index, segment in
+                        ForEach(Array(timerManager.previousSegments.enumerated()), id: \.offset) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: timerManager.previousSegments, scaleFactor: previousScale)
                             let segmentWidth = Double(segment.seconds) * previousScale
 
@@ -180,7 +180,7 @@ struct FloatingTimerBar: View {
                         }
 
                         // 2. Render live segments (current session)
-                        ForEach(Array(liveSegs.enumerated()), id: \.element.compositeId) { index, segment in
+                        ForEach(Array(liveSegs.enumerated()), id: \.offset) { index, segment in
                             let segmentStart = liveStartOffset + segmentStartProportion(at: index, segments: liveSegs, scaleFactor: timerManager.sessionScaleFactor)
                             let segmentWidth = Double(segment.seconds) * timerManager.sessionScaleFactor
 

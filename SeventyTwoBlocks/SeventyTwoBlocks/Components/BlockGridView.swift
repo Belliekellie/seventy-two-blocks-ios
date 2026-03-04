@@ -902,7 +902,7 @@ struct BlockItemView: View {
                             ? liveStartOffset / Double(totalPreviousSeconds)
                             : 1.0 / 1200.0
 
-                        ForEach(Array(timerManager.previousSegments.enumerated()), id: \.element.compositeId) { index, segment in
+                        ForEach(Array(timerManager.previousSegments.enumerated()), id: \.offset) { index, segment in
                             let segmentStart = segmentStartProportion(at: index, segments: timerManager.previousSegments, scaleFactor: previousScale) * visualScale
                             let segmentWidth = Double(segment.seconds) * previousScale * visualScale
 
@@ -941,7 +941,7 @@ struct BlockItemView: View {
                         }()
 
                         // Render segments with pre-computed offsets
-                        ForEach(Array(segmentData.enumerated()), id: \.element.segment.compositeId) { _, data in
+                        ForEach(Array(segmentData.enumerated()), id: \.offset) { _, data in
                             Rectangle()
                                 .fill(colorForSegment(data.segment))
                                 .frame(width: data.width)
@@ -993,7 +993,7 @@ struct BlockItemView: View {
                         }()
 
                         // Render segments with pre-computed offsets
-                        ForEach(Array(segmentData.enumerated()), id: \.element.segment.compositeId) { _, data in
+                        ForEach(Array(segmentData.enumerated()), id: \.offset) { _, data in
                             Rectangle()
                                 .fill(colorForSegment(data.segment))
                                 .frame(width: data.width)
