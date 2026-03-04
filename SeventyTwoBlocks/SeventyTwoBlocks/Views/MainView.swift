@@ -1627,10 +1627,12 @@ struct MainView: View {
         // Only check today's blocks - past days' orphaned sessions are handled by auto-skip
         guard isToday else { return }
 
-        // Find block with an active (non-ended) snapshot
+        // Find block with an active (non-ended) snapshot on the CURRENT block only.
+        // Stale snapshots on past blocks are ignored — they'll be cleaned up by auto-skip.
+        let currentWallBlock = Block.getCurrentBlockIndex()
         guard let orphanedBlock = blockManager.blocks.first(where: { block in
+            guard block.blockIndex == currentWallBlock else { return false }
             guard let snapshot = block.activeRunSnapshot else { return false }
-            // Snapshot is orphaned if endedAt is nil (timer was running when app died)
             return snapshot.endedAt == nil
         }) else {
             return
