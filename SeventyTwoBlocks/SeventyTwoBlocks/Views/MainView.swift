@@ -18,6 +18,8 @@ struct MainView: View {
     @State private var showDayEndDialog = false
     @State private var continuedPastDayEnd = false
     @State private var showStaleNotificationAlert = false
+    /// Signaled when saveTimerCompletion finishes, so foreground recovery can wait for it
+    @State private var pendingCompletionSave: Task<Void, Never>?
 
     private var currentBlockIndex: Int {
         Block.getCurrentBlockIndex()
@@ -459,6 +461,11 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Track whether a background completion is being processed
+            // If so, skip independent reloadBlocks (the completion flow handles its own save+reload)
+            // This prevents a race where reloadBlocks loads stale DB data before the completion save finishes
+            var handlingBackgroundCompletion = false
+
             // 0. Cross-device sync: Check if another device modified the block while we were away
             // This must happen BEFORE restoreFromBackground to avoid conflicts
             Task {
@@ -466,7 +473,12 @@ struct MainView: View {
             }
 
             // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
+            let wasActiveBeforeRestore = timerManager.isActive
             timerManager.restoreFromBackground()
+            // If a completion was triggered, a save Task is now in-flight — mark so step 8 waits
+            if wasActiveBeforeRestore && (timerManager.showTimerComplete || timerManager.showBreakComplete) {
+                handlingBackgroundCompletion = true
+            }
 
             // 1b. If timer was PAUSED and block time has elapsed, stop it cleanly
             // This treats it as an abandonment - user didn't work during pause
@@ -570,6 +582,16 @@ struct MainView: View {
                     default: break
                     }
                 }
+
+                // If a background completion is in-flight, schedule reload after save finishes
+                if handlingBackgroundCompletion {
+                    Task {
+                        await self.awaitPendingCompletionSave()
+                        await blockManager.reloadBlocks()
+                        await goalManager.loadGoals(for: selectedDate)
+                        await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                    }
+                }
             } else {
                 // 6b. No notification action — user just opened the app.
                 //     Check if auto-continue should have already fired while backgrounded.
@@ -583,12 +605,20 @@ struct MainView: View {
                         // CRITICAL: Hide dialog FIRST to prevent race with dialog's onAutoContinue
                         // The dialog's onAppear fires immediately when completedAt is far in the past
                         timerManager.showTimerComplete = false
+                        handlingBackgroundCompletion = true
                         Task {
+                            // Wait for the completion save to finish before doing anything else
+                            // This prevents reloadBlocks from loading stale data
+                            await self.awaitPendingCompletionSave()
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
                                 autoContinueDelay: autoContinueSeconds,
                                 isBreak: false
                             )
+                            // Reload blocks AFTER completion is fully saved and next block started
+                            await blockManager.reloadBlocks()
+                            await goalManager.loadGoals(for: selectedDate)
+                            await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                         }
                     } else {
                         // Still within auto-continue period — show dialog with REMAINING time
@@ -607,12 +637,17 @@ struct MainView: View {
                         // Break auto-continue period has passed — process retroactive auto-continues
                         // CRITICAL: Hide dialog FIRST to prevent race with dialog's onAutoContinue
                         timerManager.showBreakComplete = false
+                        handlingBackgroundCompletion = true
                         Task {
+                            await self.awaitPendingCompletionSave()
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
                                 autoContinueDelay: autoContinueSeconds,
                                 isBreak: true
                             )
+                            await blockManager.reloadBlocks()
+                            await goalManager.loadGoals(for: selectedDate)
+                            await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                         }
                     } else {
                         // Still within break auto-continue period
@@ -632,7 +667,9 @@ struct MainView: View {
             }
 
             // 8. Reload blocks, goals, and auto-skip
-            if isToday {
+            // Skip if a background completion is being processed — it handles its own reload
+            // after the completion save finishes (prevents race with stale DB data)
+            if isToday && !handlingBackgroundCompletion {
                 Task {
                     await blockManager.reloadBlocks()
                     await goalManager.loadGoals(for: selectedDate)
@@ -704,8 +741,9 @@ struct MainView: View {
                 self.blockManager.blocks[idx].progress = actualProgress
                 self.blockManager.blocks[idx].visualFill = visualFill
             }
-            Task {
+            self.pendingCompletionSave = Task {
                 await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments, visualFill: visualFill, blockTimeElapsed: shouldMarkDone)
+                self.pendingCompletionSave = nil
             }
         }
 
@@ -798,6 +836,14 @@ struct MainView: View {
                     isBreak: timerManager.isBreak
                 )
             }
+        }
+    }
+
+    /// Wait for any in-flight completion save to finish before proceeding.
+    /// Called by foreground recovery to prevent reloadBlocks from loading stale DB data.
+    private func awaitPendingCompletionSave() async {
+        if let task = pendingCompletionSave {
+            await task.value
         }
     }
 

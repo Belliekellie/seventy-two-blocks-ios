@@ -268,13 +268,13 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Called when a notification arrives while the app is in the foreground.
-    /// Play the sound so user hears it even when looking at the app.
+    /// Suppress it — the in-app dialog/popup handles everything when the user is looking.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        // Play sound even in foreground - the in-app dialog handles the visual
-        completionHandler([.sound])
+        // Don't show banner, badge, or play sound — the in-app UI is the notification
+        completionHandler([])
     }
 }
