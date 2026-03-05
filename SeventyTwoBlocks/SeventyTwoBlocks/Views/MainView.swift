@@ -18,6 +18,7 @@ struct MainView: View {
     @State private var showDayEndDialog = false
     @State private var continuedPastDayEnd = false
     @State private var showStaleNotificationAlert = false
+    @State private var backgroundedAt: Date?
     /// Signaled when saveTimerCompletion finishes, so foreground recovery can wait for it
     @State private var pendingCompletionSave: Task<Void, Never>?
 
@@ -466,18 +467,23 @@ struct MainView: View {
             // This prevents a race where reloadBlocks loads stale DB data before the completion save finishes
             var handlingBackgroundCompletion = false
 
-            // 0. Cross-device sync: Check if another device modified the block while we were away
-            // This must happen BEFORE restoreFromBackground to avoid conflicts
-            Task {
-                await syncWithRemoteOnForeground()
-            }
-
-            // 1. Recover timer state (may trigger completion dialog if timer expired while backgrounded)
+            // 1. Recover timer state FIRST (may trigger completion dialog if timer expired while backgrounded)
             let wasActiveBeforeRestore = timerManager.isActive
             timerManager.restoreFromBackground()
             // If a completion was triggered, a save Task is now in-flight — mark so step 8 waits
             if wasActiveBeforeRestore && (timerManager.showTimerComplete || timerManager.showBreakComplete) {
                 handlingBackgroundCompletion = true
+            }
+
+            // 0. Cross-device sync: Skip when timer is actively running on this device.
+            // This device is authoritative while its timer is active — syncing can cause
+            // false conflicts (background save updates remote updatedAt but not local)
+            // that stop and restart the timer, resetting the fill bar.
+            // Sync runs when: timer completed, timer not running, or timer is paused.
+            if !timerManager.isActive {
+                Task {
+                    await syncWithRemoteOnForeground()
+                }
             }
 
             // 1b. If timer was PAUSED and block time has elapsed, stop it cleanly
@@ -607,15 +613,15 @@ struct MainView: View {
                         timerManager.showTimerComplete = false
                         handlingBackgroundCompletion = true
                         Task {
-                            // Wait for the completion save to finish before doing anything else
-                            // This prevents reloadBlocks from loading stale data
-                            await self.awaitPendingCompletionSave()
+                            // Start the new timer FIRST so the UI updates immediately
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
                                 autoContinueDelay: autoContinueSeconds,
                                 isBreak: false
                             )
-                            // Reload blocks AFTER completion is fully saved and next block started
+                            // THEN wait for the previous block's completion save before reloading
+                            // This prevents reloadBlocks from loading stale data
+                            await self.awaitPendingCompletionSave()
                             await blockManager.reloadBlocks()
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
@@ -639,12 +645,14 @@ struct MainView: View {
                         timerManager.showBreakComplete = false
                         handlingBackgroundCompletion = true
                         Task {
-                            await self.awaitPendingCompletionSave()
+                            // Start the new timer FIRST so the UI updates immediately
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
                                 autoContinueDelay: autoContinueSeconds,
                                 isBreak: true
                             )
+                            // THEN wait for the previous block's completion save before reloading
+                            await self.awaitPendingCompletionSave()
                             await blockManager.reloadBlocks()
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
@@ -678,6 +686,7 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            backgroundedAt = Date()
             timerManager.saveStateForBackground()
             // Persist widget data for widget access while backgrounded
             WidgetDataProvider.shared.updateWidgetData(
@@ -880,10 +889,30 @@ struct MainView: View {
         // Use normalized segments
         updatedBlock.segments = normalizedSegments
 
-        print("💾 saveTimerCompletion: block \(blockIndex), used \(actualUsedSeconds)s (timer: \(secondsUsed)s, segments: \(totalSegmentSeconds)s), progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, done: \(blockTimeElapsed)")
+        print("💾 saveTimerCompletion: block \(blockIndex), used \(actualUsedSeconds)s (timer: \(secondsUsed)s, segments: \(totalSegmentSeconds)s, initialTime: \(initialTime)s), progress \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, done: \(blockTimeElapsed)")
+
+        // DIAGNOSTIC: Flag blocks that completed but have suspiciously low time
+        if blockTimeElapsed && actualUsedSeconds < 1140 {
+            print("⚠️ UNDER-CREDITED BLOCK \(blockIndex): only \(actualUsedSeconds)s saved for a completed block (expected ~1200s). initialTime=\(initialTime), segmentCount=\(normalizedSegments.count), segments=\(normalizedSegments.map { "\($0.type == .work ? "W" : "B"):\($0.seconds)s" })")
+        }
 
         await blockManager.saveBlock(updatedBlock)
+
+        // Verify save: check local state matches what we saved
+        if let savedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) {
+            if savedBlock.usedSeconds != actualUsedSeconds {
+                print("⚠️ SAVE MISMATCH: block \(blockIndex) local usedSeconds=\(savedBlock.usedSeconds) after save, expected \(actualUsedSeconds)")
+            }
+        }
+
         await blockManager.reloadBlocks()
+
+        // Verify reload didn't overwrite with stale data
+        if let reloadedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) {
+            if reloadedBlock.usedSeconds != actualUsedSeconds {
+                print("🚨 RELOAD OVERWROTE BLOCK \(blockIndex): usedSeconds changed from \(actualUsedSeconds) to \(reloadedBlock.usedSeconds) after reloadBlocks!")
+            }
+        }
     }
 
     /// Save a block as skipped when grace period expires without user interaction
@@ -1310,7 +1339,7 @@ struct MainView: View {
 
     // MARK: - Dialog Actions
 
-    private func handleContinueWork(skipLiveActivityRestart: Bool = false, enterGracePeriod: Bool = false) {
+    private func handleContinueWork(skipLiveActivityRestart: Bool = false, enterGracePeriod: Bool = false, skipRemoteCheck: Bool = false) {
         // ALWAYS continue on the CURRENT TIME block
         // The timer completed at the block boundary, so the current block IS the next one
         // If the user waited before clicking, we still go to wherever "now" is
@@ -1342,22 +1371,31 @@ struct MainView: View {
         let label = wasBreak ? "Break" : timerManager.currentLabel
 
         // Cross-device sync: Check remote state before starting timer
+        // Skip remote check during background recovery for instant UI response
         Task {
-            let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: nextBlockIndex, date: todayString)
-
-            // If remote says block is already done, don't start
-            if !shouldStart {
-                print("📱 handleContinueWork: Block \(nextBlockIndex) already done on another device, not starting timer")
-                return
-            }
-
-            // Get existing segments - use remote data if available, otherwise local
             var existingSegments: [BlockSegment]
             var existingVisualFill: Double
 
-            if !remoteSegments.isEmpty {
-                existingSegments = remoteSegments
-                existingVisualFill = remoteVisualFill
+            if !skipRemoteCheck {
+                let (remoteSegments, remoteVisualFill, shouldStart) = await preStartRemoteCheck(blockIndex: nextBlockIndex, date: todayString)
+
+                // If remote says block is already done, don't start
+                if !shouldStart {
+                    print("📱 handleContinueWork: Block \(nextBlockIndex) already done on another device, not starting timer")
+                    return
+                }
+
+                if !remoteSegments.isEmpty {
+                    existingSegments = remoteSegments
+                    existingVisualFill = remoteVisualFill
+                } else if isToday {
+                    let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
+                    existingSegments = nextBlock?.segments ?? []
+                    existingVisualFill = nextBlock?.visualFill ?? 0
+                } else {
+                    existingSegments = []
+                    existingVisualFill = 0
+                }
             } else if isToday {
                 let nextBlock = blockManager.blocks.first { $0.blockIndex == nextBlockIndex }
                 existingSegments = nextBlock?.segments ?? []
@@ -1673,11 +1711,13 @@ struct MainView: View {
         // Only check today's blocks - past days' orphaned sessions are handled by auto-skip
         guard isToday else { return }
 
-        // Find block with an active (non-ended) snapshot on the CURRENT block only.
-        // Stale snapshots on past blocks are ignored — they'll be cleaned up by auto-skip.
+        // Find block with an active (non-ended) snapshot within a recent window.
+        // The timer may have been on the PREVIOUS block (which completed while app was killed),
+        // so we look back a few blocks, not just the exact current one.
         let currentWallBlock = Block.getCurrentBlockIndex()
+        let searchStart = max(0, currentWallBlock - blocksUntilCheckIn)
         guard let orphanedBlock = blockManager.blocks.first(where: { block in
-            guard block.blockIndex == currentWallBlock else { return false }
+            guard block.blockIndex >= searchStart && block.blockIndex <= currentWallBlock else { return false }
             guard let snapshot = block.activeRunSnapshot else { return false }
             return snapshot.endedAt == nil
         }) else {
@@ -1850,8 +1890,17 @@ struct MainView: View {
         // Start timer on current block (auto-continue)
         if currentWallClockBlock < 72 && !shouldSuppressAutoContinue {
             print("🔄 Auto-continuing to block \(currentWallClockBlock) after orphaned session recovery")
+            // Restore timer manager state so handleContinueWork reads the correct category/label
+            // (On a fresh launch after app kill, timerManager state is empty)
+            timerManager.currentCategory = lastCategory
+            timerManager.currentLabel = lastLabel
+            if lastSegmentType == .break {
+                timerManager.isBreak = true
+                timerManager.lastWorkCategory = lastCategory
+                timerManager.lastWorkLabel = lastLabel
+            }
             timerManager.incrementInteractionCounter()
-            handleContinueWork()
+            handleContinueWork(skipRemoteCheck: true)
         }
     }
 
@@ -1905,7 +1954,7 @@ struct MainView: View {
                 }
             } else {
                 timerManager.incrementInteractionCounter()
-                handleContinueWork()
+                handleContinueWork(skipRemoteCheck: true)
             }
             return
         }
@@ -1953,6 +2002,15 @@ struct MainView: View {
         // This prevents the flash of incomplete blocks
         if blocksAutoFilled > 0 {
             await blockManager.reloadBlocks()
+
+            // Verify auto-filled blocks weren't corrupted by reload
+            for blockIdx in (originalBlockIndex + 1)..<(originalBlockIndex + 1 + blocksAutoFilled) {
+                if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIdx }) {
+                    if block.usedSeconds != 1200 {
+                        print("⚠️ AUTO-FILL VERIFICATION FAILED: block \(blockIdx) has usedSeconds=\(block.usedSeconds) after reload (expected 1200)")
+                    }
+                }
+            }
         }
 
         // Now handle the current block
@@ -1995,7 +2053,7 @@ struct MainView: View {
         } else {
             // Under limit - start timer on current block
             timerManager.incrementInteractionCounter()
-            handleContinueWork()
+            handleContinueWork(skipRemoteCheck: true)
             print("📱 Started timer on block \(currentWallClockBlock) after \(blocksAutoFilled) retroactive fills")
         }
     }
@@ -2003,9 +2061,11 @@ struct MainView: View {
     /// Mark a block as auto-filled with a full work/break segment
     private func markBlockAsAutoFilled(blockIndex: Int, category: String?, label: String?, isBreak: Bool) async {
         guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
-            print("⚠️ markBlockAsAutoFilled: Block \(blockIndex) not found")
+            print("⚠️ markBlockAsAutoFilled: Block \(blockIndex) not found in local array")
             return
         }
+
+        print("📱 markBlockAsAutoFilled: block \(blockIndex), previous state: status=\(block.status), usedSeconds=\(block.usedSeconds), segments=\(block.segments.count)")
 
         // Create a full-duration segment for this block
         let segment = BlockSegment(
@@ -2022,11 +2082,13 @@ struct MainView: View {
         updatedBlock.progress = 100.0
         updatedBlock.visualFill = 1.0
         updatedBlock.segments = [segment]
+        updatedBlock.activeRunSnapshot = nil  // Clear any stale snapshot
         updatedBlock.category = category ?? block.category
         updatedBlock.label = label ?? block.label
 
         await blockManager.saveBlock(updatedBlock)
         blocksWithTimerUsage.insert(blockIndex)
+        print("📱 markBlockAsAutoFilled: block \(blockIndex) saved with 1200s")
     }
 
     private func handleSkipNextBlock() {

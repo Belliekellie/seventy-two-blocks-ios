@@ -638,8 +638,10 @@ struct BlockItemView: View {
            let category = blockManager.categories.first(where: { $0.id == categoryId }) {
             return category.swiftUIColor
         }
-        // Fallback to current category color or green
-        return categoryColor ?? timerCategoryColor ?? .green
+        // Fallback: use stable green for nil-category segments
+        // Don't use categoryColor/timerCategoryColor here — those change when the user
+        // edits the category, which would retroactively recolor old segments
+        return .green
     }
 
     /// Calculate the starting proportion (0..1) for a segment at a given index
@@ -946,8 +948,8 @@ struct BlockItemView: View {
                                 .fill(colorForSegment(data.segment))
                                 .frame(width: data.width)
                                 .offset(x: min(data.offset, geo.size.width))
-                                // Only animate during active timing, not pause/resume transitions
-                                .animation(timerManager.isActive ? .linear(duration: 1) : nil, value: data.width)
+                                // Only animate during active timing, not pause/resume or background restore transitions
+                                .animation(timerManager.isActive && !timerManager.suppressFillAnimation ? .linear(duration: 1) : nil, value: data.width)
                         }
                     }
                 }

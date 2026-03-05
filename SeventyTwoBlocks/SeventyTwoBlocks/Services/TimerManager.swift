@@ -38,6 +38,10 @@ final class TimerManager: ObservableObject {
     // If timer completes while this is true, the block is discarded (marked skipped)
     @Published var isInCheckInGracePeriod: Bool = false
 
+    // Suppresses fill animation briefly after returning from background
+    // so the fill bar snaps to the correct position instead of animating there
+    @Published var suppressFillAnimation: Bool = false
+
     // MARK: - Internal State
     private var startedAt: Date?
     private var endAt: Date?
@@ -618,15 +622,26 @@ final class TimerManager: ObservableObject {
                 (!isLabelOnlyChange || segmentDuration >= MIN_SEGMENT_SECONDS)
 
             if shouldCreateBoundary {
+                // Suppress fill animation so the segment split is instant (no visual artifact)
+                suppressFillAnimation = true
+
+                // Use currentCategory for the old segment's color.
+                // If currentCategory is nil (timer started uncategorized), fall back to the
+                // new category so the uncategorized period adopts the user's chosen color
+                // instead of creating a nil-category segment that could retroactively recolor.
                 let segment = BlockSegment(
                     type: .work,
                     seconds: segmentDuration,
-                    category: currentCategory,
-                    label: currentLabel,
+                    category: currentCategory ?? newCategory,
+                    label: currentLabel ?? newLabel,
                     startElapsed: currentSegmentStartElapsed
                 )
                 liveSegments.append(segment)
                 currentSegmentStartElapsed = elapsed
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.suppressFillAnimation = false
+                }
             }
         }
 
@@ -848,6 +863,9 @@ final class TimerManager: ObservableObject {
         let segmentDuration = elapsed - currentSegmentStartElapsed
 
         if segmentDuration > 0 {
+            // Suppress fill animation so the segment split is instant (no visual artifact)
+            suppressFillAnimation = true
+
             let segment = BlockSegment(
                 type: currentSegmentType,
                 seconds: segmentDuration,
@@ -856,6 +874,10 @@ final class TimerManager: ObservableObject {
                 startElapsed: currentSegmentStartElapsed
             )
             liveSegments.append(segment)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.suppressFillAnimation = false
+            }
         }
 
         currentSegmentStartElapsed = elapsed
@@ -949,6 +971,8 @@ final class TimerManager: ObservableObject {
             handleTimerComplete()
         } else {
             // Timer still running — recalculate and restart timers
+            // Suppress animation so fill snaps to correct position instantly
+            suppressFillAnimation = true
             timeLeft = max(0, Int(endAt.timeIntervalSinceNow))
             if initialTime > 0 {
                 progress = Double(secondsUsed) / Double(initialTime) * 100
@@ -956,6 +980,10 @@ final class TimerManager: ObservableObject {
             print("🔄 restoreFromBackground: timer still running, timeLeft=\(timeLeft)s")
             startTickTimer()
             startAutosaveTimer()
+            // Re-enable animation after SwiftUI has rendered the correct position
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.suppressFillAnimation = false
+            }
 
             // Check if break notification should have fired while backgrounded
             if let notifyAt = breakNotifyAt, notifyAt <= Date() {

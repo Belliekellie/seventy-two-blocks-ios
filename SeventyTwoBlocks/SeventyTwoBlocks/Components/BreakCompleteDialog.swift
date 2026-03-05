@@ -13,6 +13,7 @@ struct BreakCompleteDialog: View {
 
     @State private var countdown: Int = 30
     @State private var autoExtendTimer: Timer?
+    @State private var hasActed = false  // Prevents race between countdown and button tap
 
     var body: some View {
         VStack(spacing: 24) {
@@ -61,6 +62,8 @@ struct BreakCompleteDialog: View {
             VStack(spacing: 12) {
                 // Primary action - Back to work
                 Button(action: {
+                    guard !hasActed else { return }
+                    hasActed = true
                     stopCountdown()
                     onBackToWork()
                 }) {
@@ -77,6 +80,8 @@ struct BreakCompleteDialog: View {
 
                 // Secondary action - Continue break
                 Button(action: {
+                    guard !hasActed else { return }
+                    hasActed = true
                     stopCountdown()
                     if suppressAutoContinue {
                         onCheckIn?()
@@ -101,6 +106,8 @@ struct BreakCompleteDialog: View {
                 // Tertiary actions - New Block and Stop
                 HStack(spacing: 12) {
                     Button(action: {
+                        guard !hasActed else { return }
+                        hasActed = true
                         stopCountdown()
                         onStartNewBlock()
                     }) {
@@ -122,6 +129,8 @@ struct BreakCompleteDialog: View {
                     }
 
                     Button(action: {
+                        guard !hasActed else { return }
+                        hasActed = true
                         stopCountdown()
                         onStop()
                     }) {
@@ -165,6 +174,8 @@ struct BreakCompleteDialog: View {
         let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
         countdown = max(0, 30 - elapsed)
         if countdown <= 0 {
+            guard !hasActed else { return }
+            hasActed = true
             onAutoContinueBreak()
             return
         }
@@ -174,6 +185,8 @@ struct BreakCompleteDialog: View {
             countdown = remaining
             if remaining <= 0 {
                 stopCountdown()
+                guard !hasActed else { return }
+                hasActed = true
                 onAutoContinueBreak()
             }
         }

@@ -83,7 +83,7 @@ struct TimerLiveActivity: Widget {
                 // Expanded view - use TimelineView for smart switching
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("BLOCK \(context.attributes.blockDisplayNumber)")
+                        Text("BLOCK \((context.state.currentBlockDisplayNumber ?? context.attributes.blockDisplayNumber))")
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
                         Text("\(context.attributes.blockStartTime)-\(context.attributes.blockEndTime)")
                             .font(.system(size: 11, design: .monospaced))
@@ -195,7 +195,7 @@ struct TimerLiveActivity: Widget {
                             .font(.system(size: 10))
                             .foregroundStyle(.green)
                     } else {
-                        Text("#B\(context.attributes.blockDisplayNumber)")
+                        Text("#B\((context.state.currentBlockDisplayNumber ?? context.attributes.blockDisplayNumber))")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                     }
                 }
@@ -262,7 +262,7 @@ struct LockScreenBannerView: View {
             // Top row: Block info + countdown
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("BLOCK \(context.attributes.blockDisplayNumber)")
+                    Text("BLOCK \((context.state.currentBlockDisplayNumber ?? context.attributes.blockDisplayNumber))")
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
 
                     Text("\(context.attributes.blockStartTime)-\(context.attributes.blockEndTime)")
@@ -316,7 +316,7 @@ struct AutoContinueBannerView: View {
         VStack(spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("BLOCK \(context.attributes.blockDisplayNumber)")
+                    Text("BLOCK \((context.state.currentBlockDisplayNumber ?? context.attributes.blockDisplayNumber))")
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
 
                     Text(context.state.isBreak ? "Break Complete" : "Block Complete")

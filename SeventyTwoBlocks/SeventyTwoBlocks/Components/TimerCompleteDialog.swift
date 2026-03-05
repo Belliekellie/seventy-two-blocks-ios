@@ -23,6 +23,7 @@ struct TimerCompleteDialog: View {
     @State private var graceCountdown: Int = 1200  // 20-minute grace period for check-in
     @State private var autoContinueTimer: Timer?
     @State private var showCelebration = false
+    @State private var hasActed = false  // Prevents race between countdown and button tap
     @AppStorage("disableAutoContinue") private var disableAutoContinue = false
 
     private let DAILY_WIN_BLOCKS = 12
@@ -212,6 +213,8 @@ struct TimerCompleteDialog: View {
         VStack(spacing: 12) {
             // Primary action - Continue in current mode
             Button(action: {
+                guard !hasActed else { return }
+                hasActed = true
                 stopCountdown()
                 if suppressAutoContinue {
                     onCheckIn?()
@@ -231,6 +234,8 @@ struct TimerCompleteDialog: View {
 
             // Secondary action - Switch mode
             Button(action: {
+                guard !hasActed else { return }
+                hasActed = true
                 stopCountdown()
                 if isBreakMode {
                     onBackToWork()
@@ -256,6 +261,8 @@ struct TimerCompleteDialog: View {
             // Tertiary actions - still visible but less prominent
             HStack(spacing: 12) {
                 Button(action: {
+                    guard !hasActed else { return }
+                    hasActed = true
                     stopCountdown()
                     onStartNewBlock()
                 }) {
@@ -277,6 +284,8 @@ struct TimerCompleteDialog: View {
                 }
 
                 Button(action: {
+                    guard !hasActed else { return }
+                    hasActed = true
                     stopCountdown()
                     onStop()
                 }) {
@@ -301,6 +310,8 @@ struct TimerCompleteDialog: View {
             // Skip next block option (if provided)
             if let skipAction = onSkipNextBlock {
                 Button(action: {
+                    guard !hasActed else { return }
+                    hasActed = true
                     stopCountdown()
                     skipAction()
                 }) {
@@ -330,6 +341,8 @@ struct TimerCompleteDialog: View {
         let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
         graceCountdown = max(0, 1200 - elapsed)
         if graceCountdown <= 0 {
+            guard !hasActed else { return }
+            hasActed = true
             onStop()
             return
         }
@@ -339,6 +352,8 @@ struct TimerCompleteDialog: View {
             graceCountdown = remaining
             if remaining <= 0 {
                 stopCountdown()
+                guard !hasActed else { return }
+                hasActed = true
                 onStop()
             }
         }
@@ -349,6 +364,8 @@ struct TimerCompleteDialog: View {
         let elapsed = Int(Date().timeIntervalSince(timerEndedAt))
         countdown = max(0, 25 - elapsed)
         if countdown <= 0 {
+            guard !hasActed else { return }
+            hasActed = true
             onAutoContinue()
             return
         }
@@ -358,6 +375,8 @@ struct TimerCompleteDialog: View {
             countdown = remaining
             if remaining <= 0 {
                 stopCountdown()
+                guard !hasActed else { return }
+                hasActed = true
                 onAutoContinue()
             }
         }
