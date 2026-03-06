@@ -611,6 +611,9 @@ struct MainView: View {
                 if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
                     let timeSinceCompletion = Date().timeIntervalSince(completedAt)
                     let autoContinueSeconds: TimeInterval = 25
+                    // showTimerComplete fires at block boundary for BOTH work and break modes.
+                    // Preserve the actual mode so retroactive fills use the correct segment type.
+                    let wasBreak = timerManager.isBreak
 
                     if timeSinceCompletion >= autoContinueSeconds {
                         // Auto-continue period has passed — process retroactive auto-continues
@@ -623,7 +626,7 @@ struct MainView: View {
                             await processRetroactiveAutoContinues(
                                 completedAt: completedAt,
                                 autoContinueDelay: autoContinueSeconds,
-                                isBreak: false
+                                isBreak: wasBreak
                             )
                             // THEN wait for the previous block's completion save before reloading
                             // This prevents reloadBlocks from loading stale data
@@ -638,7 +641,7 @@ struct MainView: View {
                         let autoContinueEndAt = Date().addingTimeInterval(remainingTime)
                         WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
                             autoContinueEndAt: autoContinueEndAt,
-                            isBreak: false
+                            isBreak: wasBreak
                         )
                     }
                 } else if timerManager.showBreakComplete, let completedAt = timerManager.timerCompletedAt {
