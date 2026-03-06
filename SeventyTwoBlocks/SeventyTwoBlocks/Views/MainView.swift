@@ -156,7 +156,13 @@ struct MainView: View {
                         handleContinueWork()
                     },
                     onAutoContinue: {
-                        timerManager.incrementInteractionCounter()
+                        // Only count full blocks (≥1140s) toward check-in threshold.
+                        // Partial blocks (started mid-block) don't count.
+                        let isFullBlock = timerManager.initialTime >= 1140
+                        if isFullBlock {
+                            timerManager.incrementInteractionCounter()
+                        }
+
                         // After N blocks without user interaction, stop instead of continuing
                         // This prevents "zombie blocks" from filling when user is away
                         // Use > (not >=) because:
@@ -684,6 +690,13 @@ struct MainView: View {
                     await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
             }
+
+            // 9. Reset check-in counter on foreground return.
+            // The user returning to the app confirms they're present — reset the counter
+            // so they get a fresh N blocks before the next check-in.
+            // Tasks from step 6b (retroactive processing) execute AFTER this synchronous code,
+            // so they see counter=0 and fill blocks from zero up to the limit.
+            timerManager.resetInteractionCounter()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             backgroundedAt = Date()
