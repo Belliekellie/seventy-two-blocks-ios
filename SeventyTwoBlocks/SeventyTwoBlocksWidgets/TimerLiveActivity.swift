@@ -85,7 +85,7 @@ struct TimerLiveActivity: Widget {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("BLOCK \((context.state.currentBlockDisplayNumber ?? context.attributes.blockDisplayNumber))")
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        Text("\(context.attributes.blockStartTime)-\(context.attributes.blockEndTime)")
+                        Text("\(context.state.currentBlockStartTime ?? context.attributes.blockStartTime)-\(context.state.currentBlockEndTime ?? context.attributes.blockEndTime)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
@@ -265,7 +265,7 @@ struct LockScreenBannerView: View {
                     Text("BLOCK \((context.state.currentBlockDisplayNumber ?? context.attributes.blockDisplayNumber))")
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
 
-                    Text("\(context.attributes.blockStartTime)-\(context.attributes.blockEndTime)")
+                    Text("\(context.state.currentBlockStartTime ?? context.attributes.blockStartTime)-\(context.state.currentBlockEndTime ?? context.attributes.blockEndTime)")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }

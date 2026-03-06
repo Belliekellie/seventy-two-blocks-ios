@@ -1483,7 +1483,9 @@ struct MainView: View {
                     label: label
                 )
             } else {
-                print("📱 Skipping Live Activity restart - existing activity continues autonomously")
+                // Update cached block info so subsequent updateLiveActivity calls
+                // show the correct block number (not the previous block's)
+                WidgetDataProvider.shared.updateCachedBlockInfo(blockIndex: nextBlockIndex, isBreak: wasBreak)
             }
 
             // Activate and save the block

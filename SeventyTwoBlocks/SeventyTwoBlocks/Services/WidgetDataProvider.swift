@@ -403,11 +403,40 @@ final class WidgetDataProvider {
         cachedThirdBlockAutoContinueEndAt = nil
         currentActivity = nil
     }
+    /// Update cached block info when reusing an existing Live Activity for a new block.
+    /// Called when auto-continue skips the Live Activity restart — updates the cached
+    /// values so subsequent updateLiveActivity calls show the correct block number.
+    func updateCachedBlockInfo(blockIndex: Int, isBreak: Bool) {
+        let dayStartHour = UserDefaults.standard.object(forKey: "dayStartHour") as? Int ?? 6
+        let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
+
+        cachedCurrentBlockIndex = blockIndex
+        cachedCurrentBlockDisplayNumber = BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: dayStartHour)
+        cachedCurrentBlockStartTime = BlockTimeUtils.blockToTime(blockIndex)
+        cachedCurrentBlockEndTime = BlockTimeUtils.blockEndTime(blockIndex)
+        cachedAutoContinueEndAt = BlockTimeUtils.blockEndDate(for: blockIndex).addingTimeInterval(autoContinueSeconds)
+
+        let nextBlockIndex = blockIndex + 1
+        cachedNextBlockIndex = nextBlockIndex < 72 ? nextBlockIndex : nil
+        cachedNextBlockDisplayNumber = nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil
+        cachedNextBlockTimerEndAt = nextBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: nextBlockIndex) : nil
+        cachedNextBlockAutoContinueEndAt = cachedNextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+
+        let thirdBlockIndex = blockIndex + 2
+        cachedThirdBlockIndex = thirdBlockIndex < 72 ? thirdBlockIndex : nil
+        cachedThirdBlockDisplayNumber = thirdBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(thirdBlockIndex, dayStartHour: dayStartHour) : nil
+        cachedThirdBlockTimerEndAt = thirdBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: thirdBlockIndex) : nil
+        cachedThirdBlockAutoContinueEndAt = cachedThirdBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+
+        print("📱 Updated Live Activity cache for block \(blockIndex) (display: \(cachedCurrentBlockDisplayNumber ?? -1))")
+    }
+
     #else
     // Stub methods for Mac Catalyst where Live Activities aren't available
     func startLiveActivity(blockIndex: Int, isBreak: Bool, timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double) async {}
     func updateLiveActivity(timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double, isBreak: Bool) {}
     func updateLiveActivityForAutoContinue(autoContinueEndAt: Date, isBreak: Bool) {}
+    func updateCachedBlockInfo(blockIndex: Int, isBreak: Bool) {}
     func endLiveActivity() {}
     #endif
 }
