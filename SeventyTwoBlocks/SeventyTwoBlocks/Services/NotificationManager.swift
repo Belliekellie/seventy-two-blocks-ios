@@ -38,7 +38,17 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - Schedule Notifications
 
+    /// Thread identifier for grouping block timer notifications together.
+    /// iOS groups notifications with the same threadIdentifier so they don't
+    /// clutter the notification centre as separate items.
+    private let timerThreadId = "block_timer"
+
     func scheduleTimerComplete(at date: Date, blockIndex: Int, isBreak: Bool, isCheckIn: Bool = false) {
+        // Remove any previously delivered block notifications so the new one
+        // effectively replaces the old one in the notification centre.
+        notificationCenter.removeDeliveredNotifications(withIdentifiers:
+            (0..<72).map { "block_timer_\($0)" })
+
         let content = UNMutableNotificationContent()
 
         if isCheckIn {
@@ -55,16 +65,20 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
         content.badge = 1
         content.categoryIdentifier = "TIMER_COMPLETE"
-        // Make it time-sensitive so it can break through some Focus modes
         content.interruptionLevel = .timeSensitive
+        content.threadIdentifier = timerThreadId
+        content.userInfo = ["blockIndex": blockIndex]
 
         let trigger = UNTimeIntervalNotificationTrigger(
             timeInterval: max(1, date.timeIntervalSinceNow),
             repeats: false
         )
 
+        // Each notification uses a block-specific identifier so they can all be
+        // pending at the same time. When one fires, removeDeliveredNotifications
+        // in the next scheduled notification's trigger clears the previous one.
         let request = UNNotificationRequest(
-            identifier: "timer_complete_\(blockIndex)",
+            identifier: "block_timer_\(blockIndex)",
             content: content,
             trigger: trigger
         )
@@ -78,8 +92,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Schedule an immediate check-in notification with grace period info
-    /// Used when the check-in limit is reached during retroactive auto-continue processing
+    /// Schedule an immediate check-in notification with grace period info.
+    /// Used when the check-in limit is reached during retroactive auto-continue processing.
     func scheduleCheckInNotification(blockIndex: Int, graceMinutesRemaining: Int) {
         let content = UNMutableNotificationContent()
         content.title = "Still working?"
@@ -88,12 +102,14 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.badge = 1
         content.categoryIdentifier = "TIMER_COMPLETE"
         content.interruptionLevel = .timeSensitive
+        content.threadIdentifier = timerThreadId
+        content.userInfo = ["blockIndex": blockIndex]
 
         // Fire immediately (1 second delay minimum required)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
 
         let request = UNNotificationRequest(
-            identifier: "check_in_\(blockIndex)",
+            identifier: "block_timer_\(blockIndex)",
             content: content,
             trigger: trigger
         )
@@ -136,7 +152,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     func cancelTimerNotification(for blockIndex: Int) {
         notificationCenter.removePendingNotificationRequests(
-            withIdentifiers: ["timer_complete_\(blockIndex)"]
+            withIdentifiers: ["block_timer_\(blockIndex)"]
         )
     }
 
@@ -231,16 +247,19 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        // Extract block index from notification identifier (format: "timer_complete_\(blockIndex)")
-        let identifier = response.notification.request.identifier
-        if identifier.hasPrefix("timer_complete_") {
-            let blockIndexStr = identifier.replacingOccurrences(of: "timer_complete_", with: "")
-            pendingActionBlockIndex = Int(blockIndexStr)
-            print("📲 Notification for block: \(pendingActionBlockIndex ?? -1)")
-        } else if identifier.hasPrefix("break_reminder_") {
-            let blockIndexStr = identifier.replacingOccurrences(of: "break_reminder_", with: "")
-            pendingActionBlockIndex = Int(blockIndexStr)
-            print("📲 Break reminder for block: \(pendingActionBlockIndex ?? -1)")
+        // Extract block index from notification userInfo
+        let userInfo = response.notification.request.content.userInfo
+        if let blockIndex = userInfo["blockIndex"] as? Int {
+            pendingActionBlockIndex = blockIndex
+            print("📲 Notification for block: \(blockIndex)")
+        } else {
+            // Fallback: try parsing from identifier for legacy notifications
+            let identifier = response.notification.request.identifier
+            if identifier.hasPrefix("break_reminder_") {
+                let blockIndexStr = identifier.replacingOccurrences(of: "break_reminder_", with: "")
+                pendingActionBlockIndex = Int(blockIndexStr)
+                print("📲 Break reminder for block: \(pendingActionBlockIndex ?? -1)")
+            }
         }
 
         switch response.actionIdentifier {

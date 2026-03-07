@@ -474,6 +474,11 @@ struct MainView: View {
             // This prevents a race where reloadBlocks loads stale DB data before the completion save finishes
             var handlingBackgroundCompletion = false
 
+            // Cancel pre-scheduled background notifications (per-block completions and
+            // check-in). They'll be re-scheduled fresh if the user backgrounds again.
+            // This prevents stale notifications from firing after the user checks back in.
+            NotificationManager.shared.cancelAllNotifications()
+
             // 1. Recover timer state FIRST (may trigger completion dialog if timer expired while backgrounded)
             let wasActiveBeforeRestore = timerManager.isActive
             timerManager.restoreFromBackground()
@@ -527,8 +532,10 @@ struct MainView: View {
             // 5. Clear badge
             NotificationManager.shared.clearBadge()
 
-            // 6. If user tapped a notification action, execute it now
-            //    (this dismisses any dialog that restoreFromBackground showed)
+            // 6. Check for notification actions and determine if stale
+            //    Stale notifications (from past blocks) should NOT execute their action
+            //    but should still allow retroactive fills to run (step 6b).
+            var hasValidNotificationAction = false
             if let action = NotificationManager.shared.pendingAction {
                 let notificationBlockIndex = NotificationManager.shared.pendingActionBlockIndex
                 print("📲 Processing notification action: \(action) for block \(notificationBlockIndex ?? -1), current block: \(currentBlockIndex)")
@@ -547,24 +554,13 @@ struct MainView: View {
                 }()
 
                 if isStaleNotification {
-                    // Stale notification - just show an alert, don't take any action
-                    // This prevents old notifications from affecting the current timer state
-                    print("📲 Ignoring stale notification action from block \(notificationBlockIndex ?? -1)")
-
-                    // Only clean up if there's nothing actively running
-                    // If timer is running or a dialog is showing, leave everything as-is
-                    // so the user can interact with the current state
-                    if !timerManager.isActive && !timerManager.isPaused &&
-                       !timerManager.showTimerComplete && !timerManager.showBreakComplete {
-                        // Nothing active - safe to clean up any orphaned state
-                        NotificationManager.shared.cancelAllNotifications()
-                        WidgetDataProvider.shared.endLiveActivity()
-                    }
-
-                    // Show alert to explain why the action was ignored
+                    // Stale notification — ignore the action but let step 6b handle
+                    // retroactive fills so blocks that auto-continued get properly filled.
+                    print("📲 Stale notification from block \(notificationBlockIndex ?? -1) — ignoring action, will process retroactive fills")
                     showStaleNotificationAlert = true
                 } else {
                     // Valid notification - process the action
+                    hasValidNotificationAction = true
                     // User explicitly tapped a notification action — reset check-in counter and clear grace period
                     timerManager.resetInteractionCounter()
 
@@ -595,18 +591,20 @@ struct MainView: View {
                     case "stop": handleStop()
                     default: break
                     }
-                }
 
-                // If a background completion is in-flight, schedule reload after save finishes
-                if handlingBackgroundCompletion {
-                    Task {
-                        await self.awaitPendingCompletionSave()
-                        await blockManager.reloadBlocks()
-                        await goalManager.loadGoals(for: selectedDate)
-                        await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                    // If a background completion is in-flight, schedule reload after save finishes
+                    if handlingBackgroundCompletion {
+                        Task {
+                            await self.awaitPendingCompletionSave()
+                            await blockManager.reloadBlocks()
+                            await goalManager.loadGoals(for: selectedDate)
+                            await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                        }
                     }
                 }
-            } else {
+            }
+
+            if !hasValidNotificationAction {
                 // 6b. No notification action — user just opened the app.
                 //     Check if auto-continue should have already fired while backgrounded.
                 //     If multiple blocks have passed, retroactively fill them.
@@ -723,6 +721,53 @@ struct MainView: View {
                 timerManager: timerManager,
                 goalManager: goalManager
             )
+
+            // Schedule notifications for each future block that would auto-continue,
+            // plus a "Still working?" check-in notification after the last one.
+            // These are scheduled in advance because the app can't run code while backgrounded.
+            // All of these are cancelled when the app returns to foreground (counter resets).
+            if timerManager.isActive, let currentBlock = timerManager.currentBlockIndex {
+                let isBreak = timerManager.isBreak
+
+                // Current block: re-schedule its completion notification
+                // (all pending notifications are cancelled on foreground return)
+                let currentBlockEnd = Block.blockEndDate(for: currentBlock)
+                if currentBlockEnd > Date() {
+                    NotificationManager.shared.scheduleTimerComplete(
+                        at: currentBlockEnd,
+                        blockIndex: currentBlock,
+                        isBreak: isBreak
+                    )
+                }
+
+                // Intermediate blocks: "Block Complete!" for each auto-continue block
+                for i in 1..<blocksUntilCheckIn {
+                    let blockIdx = currentBlock + i
+                    guard blockIdx < 72 else { break }
+                    let fireDate = Block.blockEndDate(for: blockIdx)
+                    if fireDate > Date() {
+                        NotificationManager.shared.scheduleTimerComplete(
+                            at: fireDate,
+                            blockIndex: blockIdx,
+                            isBreak: isBreak
+                        )
+                    }
+                }
+
+                // Check-in block: "Still working?" when the grace period starts
+                let checkInBlockIndex = currentBlock + blocksUntilCheckIn
+                if checkInBlockIndex < 72 {
+                    let checkInDate = Block.blockEndDate(for: checkInBlockIndex)
+                    if checkInDate > Date() {
+                        NotificationManager.shared.scheduleTimerComplete(
+                            at: checkInDate,
+                            blockIndex: checkInBlockIndex,
+                            isBreak: isBreak,
+                            isCheckIn: true
+                        )
+                    }
+                }
+            }
         }
         .onChange(of: selectedDate) { _, newDate in
             Task {
@@ -1971,21 +2016,10 @@ struct MainView: View {
                 if timeSinceCheckIn >= gracePeriod {
                     handleStop()
                 } else {
-                    // Send notification and show check-in dialog
+                    // Still in grace period — start timer and credit elapsed time
                     let graceMinutesRemaining = Int((gracePeriod - timeSinceCheckIn) / 60)
-
-                    NotificationManager.shared.scheduleCheckInNotification(
-                        blockIndex: currentWallClockBlock,
-                        graceMinutesRemaining: max(1, graceMinutesRemaining)
-                    )
-
-                    timerManager.showTimerComplete = true
-                    timerManager.timerCompletedAt = checkInTriggeredAt
-                    let graceEndAt = checkInTriggeredAt.addingTimeInterval(gracePeriod)
-                    WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                        autoContinueEndAt: graceEndAt,
-                        isBreak: isBreak
-                    )
+                    print("📱 Single-block check-in, \(graceMinutesRemaining) min grace remaining — starting grace period timer")
+                    handleContinueWork(enterGracePeriod: true, skipRemoteCheck: true)
                 }
             } else {
                 timerManager.incrementInteractionCounter()
@@ -2048,27 +2082,17 @@ struct MainView: View {
                 print("📱 Check-in grace period expired (\(Int(timeSinceCheckIn))s since check-in), stopping")
                 handleStop()
             } else {
-                // Still in grace period - send notification and show dialog
+                // Still in grace period — start timer on the grace period block and
+                // credit the elapsed time. handleContinueWork automatically creates a
+                // segment for the time that passed while backgrounded, so the block
+                // shows the correct fill (e.g., 50% if 10 min have elapsed).
+                // enterGracePeriod: true sets isInCheckInGracePeriod, which:
+                //   - Shows CheckInGracePeriodView ("Still there?")
+                //   - If user taps Continue: flag clears, segments kept, timer continues
+                //   - If block completes without response: segments discarded, block skipped
                 let graceMinutesRemaining = Int((gracePeriod - timeSinceCheckIn) / 60)
-                print("📱 Check-in limit reached, \(graceMinutesRemaining) min grace remaining")
-
-                // Send immediate notification so user can respond without opening app
-                NotificationManager.shared.scheduleCheckInNotification(
-                    blockIndex: currentWallClockBlock,
-                    graceMinutesRemaining: max(1, graceMinutesRemaining)
-                )
-
-                // Also set up the completion dialog state (shown if they open the app)
-                // The dialog will show without auto-continue countdown because shouldSuppressAutoContinue is true
-                timerManager.showTimerComplete = true
-                timerManager.timerCompletedAt = checkInTriggeredAt
-
-                // Update Live Activity to show the grace period countdown
-                let graceEndAt = checkInTriggeredAt.addingTimeInterval(gracePeriod)
-                WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                    autoContinueEndAt: graceEndAt,
-                    isBreak: isBreak
-                )
+                print("📱 Check-in limit reached, \(graceMinutesRemaining) min grace remaining — starting grace period timer")
+                handleContinueWork(enterGracePeriod: true, skipRemoteCheck: true)
             }
         } else {
             // Under limit - start timer on current block
