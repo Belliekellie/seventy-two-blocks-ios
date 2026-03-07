@@ -526,13 +526,11 @@ struct BlockSheetView: View {
                                     return // onChange will fire again with truncated value
                                 }
                                 hasChanges = true
-                                // Update timer label if running
+                                // Route through updateCategory so label changes create proper
+                                // segment boundaries (with 10s minimum for label-only changes
+                                // to avoid micro-segments from keystrokes)
                                 if isTimerRunningForThisBlock {
-                                    let normalized = normalizeLabel(newValue)
-                                    timerManager.currentLabel = normalized
-                                    if timerManager.isBreak {
-                                        timerManager.lastWorkLabel = normalized
-                                    }
+                                    timerManager.updateCategory(category, label: normalizeLabel(newValue))
                                 }
                             }
                             .onSubmit {
@@ -549,11 +547,10 @@ struct BlockSheetView: View {
                             Button {
                                 label = ""
                                 hasChanges = true
+                                // Route through updateCategory to create a segment boundary
+                                // so the label change is properly recorded in segments
                                 if isTimerRunningForThisBlock {
-                                    timerManager.currentLabel = nil
-                                    if timerManager.isBreak {
-                                        timerManager.lastWorkLabel = nil
-                                    }
+                                    timerManager.updateCategory(category, label: nil)
                                 }
                             } label: {
                                 Image(systemName: "xmark.circle.fill")

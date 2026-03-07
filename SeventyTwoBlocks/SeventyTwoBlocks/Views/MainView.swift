@@ -961,8 +961,11 @@ struct MainView: View {
         if blockTimeElapsed {
             updatedBlock.status = .done
         }
-        updatedBlock.category = timerManager.currentCategory ?? block.category
-        updatedBlock.label = timerManager.currentLabel ?? block.label
+        // Use timer's current category/label directly — the timer is authoritative.
+        // Don't fall back to block.category/label, as that would reintroduce old values
+        // when the user intentionally cleared them.
+        updatedBlock.category = timerManager.currentCategory
+        updatedBlock.label = timerManager.currentLabel
 
         // Use normalized segments
         updatedBlock.segments = normalizedSegments
@@ -1051,9 +1054,11 @@ struct MainView: View {
         // During break, don't overwrite the block's category/label with the
         // timer's stale work values — the block should keep whatever was set
         // when work was active. Only update during work mode.
+        // Use timer's values directly — don't fall back to block.category/label,
+        // as that reintroduces old values when the user intentionally cleared them.
         if !timerManager.isBreak {
-            updatedBlock.category = timerManager.currentCategory ?? block.category
-            updatedBlock.label = timerManager.currentLabel ?? block.label
+            updatedBlock.category = timerManager.currentCategory
+            updatedBlock.label = timerManager.currentLabel
         }
         // Also save the combined segments so they persist on refresh
         // Normalize to merge consecutive same-type/category/label segments (prevents micro-segment clutter)
@@ -1906,8 +1911,11 @@ struct MainView: View {
         // We should credit the full block since timer was meant to run to boundary
         let snapshotSegments = snapshot.segments
         let lastSegmentType = snapshotSegments.last?.type ?? .work
-        let lastCategory = snapshotSegments.last(where: { $0.type == .work })?.category ?? orphanedBlock.category
-        let lastLabel = snapshotSegments.last(where: { $0.type == .work })?.label ?? orphanedBlock.label
+        // Use snapshot.currentCategory (the timer's in-memory value when saved) as primary source.
+        // Fall back to the last work segment's category, NOT orphanedBlock.category —
+        // the user may have intentionally cleared or changed the category.
+        let lastCategory = snapshot.currentCategory ?? snapshotSegments.last(where: { $0.type == .work })?.category
+        let lastLabel = snapshotSegments.last(where: { $0.type == .work })?.label
 
         // Calculate how much time the snapshot captured
         let snapshotSeconds = snapshotSegments.reduce(0) { $0 + $1.seconds }
@@ -2127,8 +2135,10 @@ struct MainView: View {
         updatedBlock.visualFill = 1.0
         updatedBlock.segments = [segment]
         updatedBlock.activeRunSnapshot = nil  // Clear any stale snapshot
-        updatedBlock.category = category ?? block.category
-        updatedBlock.label = label ?? block.label
+        // Use the passed category/label directly — don't fall back to block's
+        // old values, as the user may have intentionally cleared them.
+        updatedBlock.category = category
+        updatedBlock.label = label
 
         // Update local array immediately so the UI shows filled blocks
         // without waiting for the database save to complete
