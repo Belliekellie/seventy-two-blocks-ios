@@ -297,6 +297,7 @@ struct MainView: View {
                     onStartNextDay: {
                         showDayEndDialog = false
                         continuedPastDayEnd = false
+                        blocksWithTimerUsage = []  // Fresh day — clear yesterday's usage
                         selectedDate = logicalToday
                     },
                     onContinueWorking: {
@@ -512,6 +513,7 @@ struct MainView: View {
             //    and hasn't chosen to continue past day end
             if !isToday && !timerManager.isActive && !timerManager.showTimerComplete && !timerManager.showBreakComplete && !continuedPastDayEnd {
                 selectedDate = logicalToday
+                showOverview = false  // Dismiss overview left open from a previous day
             }
 
             // 4. Update widget data on foreground
@@ -608,7 +610,17 @@ struct MainView: View {
                 // 6b. No notification action — user just opened the app.
                 //     Check if auto-continue should have already fired while backgrounded.
                 //     If multiple blocks have passed, retroactively fill them.
-                if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
+
+                // Day change guard: if the logical day has changed since the timer expired,
+                // don't try to retroactively fill blocks across days — just clean up the
+                // stale completion state. The completed block was already saved by
+                // restoreFromBackground → handleTimerComplete.
+                // checkForBlockChange() will then show the DayEndDialog so the user
+                // can choose "Start Next Day" or "Continue Working".
+                if !isToday && (timerManager.showTimerComplete || timerManager.showBreakComplete) {
+                    handleStop()
+                    showOverview = false  // Dismiss overview left open from a previous day
+                } else if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
                     let timeSinceCompletion = Date().timeIntervalSince(completedAt)
                     let autoContinueSeconds: TimeInterval = 25
                     // showTimerComplete fires at block boundary for BOTH work and break modes.
@@ -717,6 +729,11 @@ struct MainView: View {
                 async let blocksLoad: Void = blockManager.loadBlocks(for: newDate)
                 async let goalsLoad: Void = goalManager.loadGoals(for: newDate)
                 _ = await (blocksLoad, goalsLoad)
+                // Auto-skip past blocks immediately when switching to today
+                // (e.g., after DayEndDialog "Start Next Day" or foreground date switch)
+                if isToday {
+                    await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                }
             }
         }
         .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
