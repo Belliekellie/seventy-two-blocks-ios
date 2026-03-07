@@ -2033,21 +2033,6 @@ struct MainView: View {
             }
         }
 
-        // Reload blocks to update UI before handling current block
-        // This prevents the flash of incomplete blocks
-        if blocksAutoFilled > 0 {
-            await blockManager.reloadBlocks()
-
-            // Verify auto-filled blocks weren't corrupted by reload
-            for blockIdx in (originalBlockIndex + 1)..<(originalBlockIndex + 1 + blocksAutoFilled) {
-                if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIdx }) {
-                    if block.usedSeconds != 1200 {
-                        print("⚠️ AUTO-FILL VERIFICATION FAILED: block \(blockIdx) has usedSeconds=\(block.usedSeconds) after reload (expected 1200)")
-                    }
-                }
-            }
-        }
-
         // Now handle the current block
         if timerManager.blocksSinceLastInteraction >= limit {
             // Check-in limit reached - give user a grace period before stopping
@@ -2121,8 +2106,12 @@ struct MainView: View {
         updatedBlock.category = category ?? block.category
         updatedBlock.label = label ?? block.label
 
-        await blockManager.saveBlock(updatedBlock)
+        // Update local array immediately so the UI shows filled blocks
+        // without waiting for the database save to complete
+        blockManager.updateBlockLocally(updatedBlock)
         blocksWithTimerUsage.insert(blockIndex)
+
+        await blockManager.saveBlock(updatedBlock)
         print("📱 markBlockAsAutoFilled: block \(blockIndex) saved with 1200s")
     }
 

@@ -229,6 +229,14 @@ final class BlockManager: ObservableObject {
         await saveBlock(block)
     }
 
+    /// Update a block in the local array immediately (triggers UI refresh).
+    /// Use before an async saveBlock when instant visual feedback is needed.
+    func updateBlockLocally(_ block: Block) {
+        if let index = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex && $0.date == block.date }) {
+            blocks[index] = block
+        }
+    }
+
     // MARK: - Save Block
 
     func saveBlock(_ block: Block) async {
