@@ -13,6 +13,10 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Used to detect stale notifications (e.g., user tapped an old notification).
     var pendingActionBlockIndex: Int?
 
+    /// Date string from the notification that triggered the action.
+    /// Used to detect cross-day stale notifications (same block index, different day).
+    var pendingActionDate: String?
+
     private override init() {
         super.init()
         notificationCenter.delegate = self
@@ -43,7 +47,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// clutter the notification centre as separate items.
     private let timerThreadId = "block_timer"
 
-    func scheduleTimerComplete(at date: Date, blockIndex: Int, isBreak: Bool, isCheckIn: Bool = false) {
+    func scheduleTimerComplete(at date: Date, blockIndex: Int, isBreak: Bool, isCheckIn: Bool = false, timerDate: String? = nil) {
         // Remove any previously delivered block notifications so the new one
         // effectively replaces the old one in the notification centre.
         notificationCenter.removeDeliveredNotifications(withIdentifiers:
@@ -67,7 +71,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.categoryIdentifier = "TIMER_COMPLETE"
         content.interruptionLevel = .timeSensitive
         content.threadIdentifier = timerThreadId
-        content.userInfo = ["blockIndex": blockIndex]
+        var userInfo: [String: Any] = ["blockIndex": blockIndex]
+        if let timerDate = timerDate { userInfo["timerDate"] = timerDate }
+        content.userInfo = userInfo
 
         let trigger = UNTimeIntervalNotificationTrigger(
             timeInterval: max(1, date.timeIntervalSinceNow),
@@ -94,7 +100,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     /// Schedule an immediate check-in notification with grace period info.
     /// Used when the check-in limit is reached during retroactive auto-continue processing.
-    func scheduleCheckInNotification(blockIndex: Int, graceMinutesRemaining: Int) {
+    func scheduleCheckInNotification(blockIndex: Int, graceMinutesRemaining: Int, timerDate: String? = nil) {
         let content = UNMutableNotificationContent()
         content.title = "Still working?"
         content.body = "You have \(graceMinutesRemaining) minutes to continue or your session will end. Tap to check in."
@@ -103,7 +109,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.categoryIdentifier = "TIMER_COMPLETE"
         content.interruptionLevel = .timeSensitive
         content.threadIdentifier = timerThreadId
-        content.userInfo = ["blockIndex": blockIndex]
+        var userInfo: [String: Any] = ["blockIndex": blockIndex]
+        if let timerDate = timerDate { userInfo["timerDate"] = timerDate }
+        content.userInfo = userInfo
 
         // Fire immediately (1 second delay minimum required)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
@@ -247,7 +255,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        // Extract block index from notification userInfo
+        // Extract block index and date from notification userInfo
         let userInfo = response.notification.request.content.userInfo
         if let blockIndex = userInfo["blockIndex"] as? Int {
             pendingActionBlockIndex = blockIndex
@@ -261,6 +269,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 print("📲 Break reminder for block: \(pendingActionBlockIndex ?? -1)")
             }
         }
+        // Extract date for cross-day stale detection
+        pendingActionDate = userInfo["timerDate"] as? String
 
         switch response.actionIdentifier {
         case "CONTINUE":

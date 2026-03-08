@@ -514,9 +514,14 @@ struct MainView: View {
                 handleStop()
             }
 
-            // 3. Auto-switch to today if the day has changed, but only when user isn't actively working
-            //    and hasn't chosen to continue past day end
-            if !isToday && !timerManager.isActive && !timerManager.showTimerComplete && !timerManager.showBreakComplete && !continuedPastDayEnd {
+            // 3. Auto-switch to today if the day has changed, but only when user isn't actively working.
+            //    Also clear continuedPastDayEnd if it's stale — this flag was for staying on yesterday
+            //    during a late-night session, but if the app was backgrounded overnight and returned
+            //    the next day, the flag shouldn't keep the user stuck on yesterday's view forever.
+            if !isToday && !timerManager.isActive && !timerManager.showTimerComplete && !timerManager.showBreakComplete {
+                // Clear stale continuedPastDayEnd: the flag was for continuing on yesterday's blocks,
+                // but if we're returning from background on a new day, it should reset.
+                continuedPastDayEnd = false
                 selectedDate = logicalToday
                 showOverview = false  // Dismiss overview left open from a previous day
             }
@@ -538,16 +543,24 @@ struct MainView: View {
             var hasValidNotificationAction = false
             if let action = NotificationManager.shared.pendingAction {
                 let notificationBlockIndex = NotificationManager.shared.pendingActionBlockIndex
-                print("📲 Processing notification action: \(action) for block \(notificationBlockIndex ?? -1), current block: \(currentBlockIndex)")
+                let notificationDate = NotificationManager.shared.pendingActionDate
+                print("📲 Processing notification action: \(action) for block \(notificationBlockIndex ?? -1) date \(notificationDate ?? "nil"), current block: \(currentBlockIndex)")
                 NotificationManager.shared.pendingAction = nil
                 NotificationManager.shared.pendingActionBlockIndex = nil
+                NotificationManager.shared.pendingActionDate = nil
 
-                // Check if this is a stale notification (from a past block)
+                // Check if this is a stale notification (from a past block or different day)
                 // Notifications fire at the END of a block, and their actions affect the NEXT block.
                 // e.g., notification for block 32 fires at 11:00, actions start block 33
                 // So the notification is valid while we're in block 33 (notifBlock + 1 == currentBlock)
                 // It's only stale when block 33 has ALSO passed (notifBlock + 1 < currentBlock)
+                // Also stale if the notification is from a DIFFERENT day — same block index
+                // on a different day should NOT trigger actions on today's blocks.
                 let isStaleNotification: Bool = {
+                    // Different day → always stale
+                    if let notifDate = notificationDate, notifDate != todayString {
+                        return true
+                    }
                     guard let notifBlock = notificationBlockIndex else { return false }
                     // Stale if the NEXT block after the notification has also passed
                     return notifBlock + 1 < currentBlockIndex
@@ -728,6 +741,7 @@ struct MainView: View {
             // All of these are cancelled when the app returns to foreground (counter resets).
             if timerManager.isActive, let currentBlock = timerManager.currentBlockIndex {
                 let isBreak = timerManager.isBreak
+                let timerDateStr = timerManager.currentDate ?? todayString
 
                 // Current block: re-schedule its completion notification
                 // (all pending notifications are cancelled on foreground return)
@@ -736,7 +750,8 @@ struct MainView: View {
                     NotificationManager.shared.scheduleTimerComplete(
                         at: currentBlockEnd,
                         blockIndex: currentBlock,
-                        isBreak: isBreak
+                        isBreak: isBreak,
+                        timerDate: timerDateStr
                     )
                 }
 
@@ -749,7 +764,8 @@ struct MainView: View {
                         NotificationManager.shared.scheduleTimerComplete(
                             at: fireDate,
                             blockIndex: blockIdx,
-                            isBreak: isBreak
+                            isBreak: isBreak,
+                            timerDate: timerDateStr
                         )
                     }
                 }
@@ -763,7 +779,8 @@ struct MainView: View {
                             at: checkInDate,
                             blockIndex: checkInBlockIndex,
                             isBreak: isBreak,
-                            isCheckIn: true
+                            isCheckIn: true,
+                            timerDate: timerDateStr
                         )
                     }
                 }
@@ -797,6 +814,11 @@ struct MainView: View {
             // Track this block as having timer usage
             self.blocksWithTimerUsage.insert(blockIndex)
 
+            // Capture category/label NOW before resetState() can clear them
+            // (handleStop → dismissTimerComplete → resetState runs before the async save)
+            let capturedCategory = self.timerManager.currentCategory
+            let capturedLabel = self.timerManager.currentLabel
+
             // Determine if this was a natural completion (timer hit 0) vs manual stop
             // Natural completion: secondsUsed == initialTime (timer ran to block boundary)
             // Use 5-second tolerance for timer tick timing jitter
@@ -816,7 +838,10 @@ struct MainView: View {
             // Use segment total for usedSeconds (not just timer's secondsUsed which misses background time)
             let actualUsedSeconds = max(secondsUsed, totalSegmentSeconds)
             let actualProgress = min(100.0, Double(actualUsedSeconds) / 1200.0 * 100.0)
-            if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+            // CRITICAL: Match by BOTH blockIndex AND date to prevent cross-day data leaks.
+            // If blockManager.blocks was reloaded for a different day, we must not write
+            // yesterday's timer data into today's block at the same index.
+            if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex && $0.date == date }) {
                 if shouldMarkDone {
                     self.blockManager.blocks[idx].status = .done
                     print("✅ Marked block \(blockIndex) as .done (natural: \(isNaturalCompletion), elapsed: \(blockTimeElapsed)), progress: \(Int(actualProgress))%, visualFill: \(Int(visualFill * 100))%, segments: \(totalSegmentSeconds)s")
@@ -829,7 +854,7 @@ struct MainView: View {
                 self.blockManager.blocks[idx].visualFill = visualFill
             }
             self.pendingCompletionSave = Task {
-                await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments, visualFill: visualFill, blockTimeElapsed: shouldMarkDone)
+                await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments, visualFill: visualFill, blockTimeElapsed: shouldMarkDone, category: capturedCategory, label: capturedLabel)
                 self.pendingCompletionSave = nil
             }
         }
@@ -871,8 +896,8 @@ struct MainView: View {
         timerManager.onGracePeriodExpired = { blockIndex, date in
             print("📱 Grace period expired for block \(blockIndex) - marking as skipped")
 
-            // Update local state immediately
-            if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+            // Update local state immediately (match by date to prevent cross-day leaks)
+            if let idx = self.blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex && $0.date == date }) {
                 self.blockManager.blocks[idx].status = .skipped
                 self.blockManager.blocks[idx].segments = []
                 self.blockManager.blocks[idx].usedSeconds = 0
@@ -934,9 +959,12 @@ struct MainView: View {
         }
     }
 
-    private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment], visualFill: Double, blockTimeElapsed: Bool) async {
-        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
-            print("⚠️ saveTimerCompletion: block \(blockIndex) not found in local array, skipping DB save")
+    private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment], visualFill: Double, blockTimeElapsed: Bool, category: String? = nil, label: String? = nil) async {
+        // CRITICAL: Match by BOTH blockIndex AND date to prevent cross-day data leaks.
+        // If blockManager.blocks was reloaded for a different day between onTimerComplete
+        // and this async save, we must not write to the wrong day's block.
+        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) else {
+            print("⚠️ saveTimerCompletion: block \(blockIndex) for date \(date) not found in local array, skipping DB save")
             return
         }
 
@@ -961,11 +989,11 @@ struct MainView: View {
         if blockTimeElapsed {
             updatedBlock.status = .done
         }
-        // Use timer's current category/label directly — the timer is authoritative.
-        // Don't fall back to block.category/label, as that would reintroduce old values
-        // when the user intentionally cleared them.
-        updatedBlock.category = timerManager.currentCategory
-        updatedBlock.label = timerManager.currentLabel
+        // Use the captured category/label from when the timer completed, not the
+        // live timerManager values — resetState() may have cleared them by now
+        // (e.g., handleStop runs between onTimerComplete and this async save).
+        updatedBlock.category = category
+        updatedBlock.label = label
 
         // Use normalized segments
         updatedBlock.segments = normalizedSegments
@@ -980,7 +1008,7 @@ struct MainView: View {
         await blockManager.saveBlock(updatedBlock)
 
         // Verify save: check local state matches what we saved
-        if let savedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) {
+        if let savedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) {
             if savedBlock.usedSeconds != actualUsedSeconds {
                 print("⚠️ SAVE MISMATCH: block \(blockIndex) local usedSeconds=\(savedBlock.usedSeconds) after save, expected \(actualUsedSeconds)")
             }
@@ -989,7 +1017,7 @@ struct MainView: View {
         await blockManager.reloadBlocks()
 
         // Verify reload didn't overwrite with stale data
-        if let reloadedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) {
+        if let reloadedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) {
             if reloadedBlock.usedSeconds != actualUsedSeconds {
                 print("🚨 RELOAD OVERWROTE BLOCK \(blockIndex): usedSeconds changed from \(actualUsedSeconds) to \(reloadedBlock.usedSeconds) after reloadBlocks!")
             }
@@ -998,8 +1026,8 @@ struct MainView: View {
 
     /// Save a block as skipped when grace period expires without user interaction
     private func saveGracePeriodSkip(blockIndex: Int, date: String) async {
-        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
-            print("⚠️ saveGracePeriodSkip: block \(blockIndex) not found")
+        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) else {
+            print("⚠️ saveGracePeriodSkip: block \(blockIndex) for date \(date) not found")
             return
         }
 
@@ -1026,8 +1054,13 @@ struct MainView: View {
             return
         }
 
-        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) else {
-            print("💾 saveSnapshot: Block \(blockIndex) not found")
+        // CRITICAL: Match by BOTH blockIndex AND date to prevent cross-day data leaks.
+        // If the user navigated to a different day or the day auto-switched,
+        // blockManager.blocks may be loaded for a different date. Without the date
+        // check, the snapshot from yesterday's timer would be saved to today's block
+        // at the same index — causing "ghost blocks" on the next app launch.
+        guard let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) else {
+            print("💾 saveSnapshot: Block \(blockIndex) for date \(date) not found (blocks loaded for different day?)")
             return
         }
 
@@ -1570,14 +1603,16 @@ struct MainView: View {
                     at: Date().addingTimeInterval(300),
                     blockIndex: nextBlockIndex,
                     isBreak: true,
-                    isCheckIn: willCheckIn
+                    isCheckIn: willCheckIn,
+                    timerDate: todayString
                 )
             } else {
                 NotificationManager.shared.scheduleTimerComplete(
                     at: Block.blockEndDate(for: nextBlockIndex),
                     blockIndex: nextBlockIndex,
                     isBreak: false,
-                    isCheckIn: willCheckIn
+                    isCheckIn: willCheckIn,
+                    timerDate: todayString
                 )
             }
 
@@ -1632,7 +1667,8 @@ struct MainView: View {
             NotificationManager.shared.scheduleTimerComplete(
                 at: Date().addingTimeInterval(300),
                 blockIndex: blockIndex,
-                isBreak: true
+                isBreak: true,
+                timerDate: todayString
             )
         }
     }
@@ -1668,7 +1704,8 @@ struct MainView: View {
                 NotificationManager.shared.scheduleTimerComplete(
                     at: Block.blockEndDate(for: blockIndex),
                     blockIndex: blockIndex,
-                    isBreak: false
+                    isBreak: false,
+                    timerDate: todayString
                 )
                 // Update Live Activity to show work mode
                 let category = timerManager.currentCategory
@@ -1753,7 +1790,8 @@ struct MainView: View {
             NotificationManager.shared.scheduleTimerComplete(
                 at: Block.blockEndDate(for: nextBlockIndex),
                 blockIndex: nextBlockIndex,
-                isBreak: false
+                isBreak: false,
+                timerDate: todayString
             )
 
             // Trigger segment focus change (handles collapse/expand/scroll)
@@ -1799,10 +1837,14 @@ struct MainView: View {
         // Find block with an active (non-ended) snapshot within a recent window.
         // The timer may have been on the PREVIOUS block (which completed while app was killed),
         // so we look back a few blocks, not just the exact current one.
+        // CRITICAL: Also verify the block's date matches todayString. A cross-day bug could
+        // write yesterday's snapshot onto today's block at the same index. Without this check,
+        // we'd restart a timer based on stale data, causing "ghost blocks from yesterday."
         let currentWallBlock = Block.getCurrentBlockIndex()
         let searchStart = max(0, currentWallBlock - blocksUntilCheckIn)
         guard let orphanedBlock = blockManager.blocks.first(where: { block in
             guard block.blockIndex >= searchStart && block.blockIndex <= currentWallBlock else { return false }
+            guard block.date == todayString else { return false }
             guard let snapshot = block.activeRunSnapshot else { return false }
             return snapshot.endedAt == nil
         }) else {
@@ -2198,7 +2240,8 @@ struct MainView: View {
         NotificationManager.shared.scheduleTimerComplete(
             at: Block.blockEndDate(for: continueBlockIndex),
             blockIndex: continueBlockIndex,
-            isBreak: false
+            isBreak: false,
+            timerDate: todayString
         )
 
         // Trigger segment focus change (handles collapse/expand/scroll)
@@ -2251,7 +2294,8 @@ struct MainView: View {
             NotificationManager.shared.scheduleTimerComplete(
                 at: Block.blockEndDate(for: block.blockIndex),
                 blockIndex: block.blockIndex,
-                isBreak: false
+                isBreak: false,
+                timerDate: todayString
             )
         }
     }
@@ -2299,7 +2343,8 @@ struct MainView: View {
             NotificationManager.shared.scheduleTimerComplete(
                 at: Date().addingTimeInterval(300),
                 blockIndex: block.blockIndex,
-                isBreak: true
+                isBreak: true,
+                timerDate: todayString
             )
         }
     }
