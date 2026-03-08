@@ -103,25 +103,35 @@ struct BlockSheetView: View {
         date > todayString
     }
 
+    /// Convert a block index to its position within the logical day (0-71).
+    /// The logical day starts at dayStartHour, so blocks before dayStartHour
+    /// (night blocks, midnight-6AM) come AFTER evening blocks in the order.
+    /// Without this, comparing raw indices breaks after midnight: at 1 AM
+    /// (index 3), block 69 (11 PM) appears "future" when it's actually past.
+    private func logicalPosition(_ blockIndex: Int) -> Int {
+        let dayStartBlock = dayStartHour * 3
+        return (blockIndex - dayStartBlock + 72) % 72
+    }
+
     /// Is this the current block RIGHT NOW? Only true if viewing today
     private var isCurrentBlock: Bool {
         isViewingToday && block.blockIndex == Block.getCurrentBlockIndex()
     }
 
-    /// Past block - when viewing today with an earlier block index
+    /// Past block - when viewing today with an earlier block index (using logical day order)
     private var isPastBlock: Bool {
         if !isViewingToday {
             return false  // Other days don't have "past" blocks in the timer sense
         }
-        return block.blockIndex < Block.getCurrentBlockIndex()
+        return logicalPosition(block.blockIndex) < logicalPosition(Block.getCurrentBlockIndex())
     }
 
-    /// Future block - when not viewing today, or when viewing today with a later block index
+    /// Future block - when not viewing today, or when viewing today with a later block index (using logical day order)
     private var isFutureBlock: Bool {
         if !isViewingToday {
             return true  // All blocks on other days are "future" (can't start timer)
         }
-        return block.blockIndex > Block.getCurrentBlockIndex()
+        return logicalPosition(block.blockIndex) > logicalPosition(Block.getCurrentBlockIndex())
     }
 
     /// Timer is running for this block - only possible when viewing today
@@ -1258,10 +1268,21 @@ struct TimeBreakdownView: View {
     }
 
     // Aggregate work entries by category+label
+    // Applies spillover filter: if the first work segment is < 60 seconds,
+    // it's excluded (matches BlockGridView's distinctMeaningfulActivityCount).
+    // This prevents a tiny leftover from a previous category showing up
+    // in the time breakdown when the user switched categories at the popup.
+    private let spilloverThreshold = 60
+
     private var workEntries: [(category: String?, label: String?, seconds: Int, percentage: Int)] {
+        let workSegments = block.segments.filter { $0.type == .work && $0.seconds > 0 }
         var entries: [String: (category: String?, label: String?, seconds: Int)] = [:]
 
-        for segment in block.segments where segment.type == .work {
+        for (index, segment) in workSegments.enumerated() {
+            // Skip tiny first segment (spillover from previous block's category)
+            if index == 0 && segment.seconds < spilloverThreshold {
+                continue
+            }
             let key = "\(segment.category ?? "none")|\(segment.label ?? "none")"
             if var existing = entries[key] {
                 existing.seconds += segment.seconds

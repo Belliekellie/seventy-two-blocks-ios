@@ -623,7 +623,10 @@ struct MainView: View {
                             // current block would be left unfilled and then auto-skipped.
                             if let originalIdx = originalCompletedBlockIndex {
                                 let wallClockBlock = Block.getCurrentBlockIndex()
-                                for blockIdx in (originalIdx + 1)..<wallClockBlock {
+                                // Walk forward from the completed block to current,
+                                // wrapping around midnight (block 71 → block 0)
+                                var blockIdx = (originalIdx + 1) % 72
+                                while blockIdx != wallClockBlock {
                                     if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIdx }),
                                        block.status != .done && block.status != .skipped {
                                         await markBlockAsAutoFilled(
@@ -634,6 +637,7 @@ struct MainView: View {
                                         )
                                         print("📲 Retroactively filled block \(blockIdx) (notification action path)")
                                     }
+                                    blockIdx = (blockIdx + 1) % 72
                                 }
                             }
 
@@ -2078,22 +2082,26 @@ struct MainView: View {
         let currentWallClockBlock = Block.getCurrentBlockIndex()
 
         // Don't auto-continue if too many blocks have passed (check-in threshold)
-        let blocksPassed = currentWallClockBlock - orphanedBlock.blockIndex
+        // Use modular arithmetic to handle midnight wrap (block 71 → 0)
+        let blocksPassed = (currentWallClockBlock - orphanedBlock.blockIndex + 72) % 72
         if blocksPassed > blocksUntilCheckIn {
             print("🔄 Too many blocks passed (\(blocksPassed)) since orphaned block - not auto-continuing")
             return
         }
 
         // Fill any intermediate blocks and continue to current
-        if currentWallClockBlock > orphanedBlock.blockIndex + 1 {
-            // Multiple blocks passed - fill intermediates
-            for blockIdx in (orphanedBlock.blockIndex + 1)..<currentWallClockBlock {
+        let nextBlock = (orphanedBlock.blockIndex + 1) % 72
+        if currentWallClockBlock != nextBlock && blocksPassed > 1 {
+            // Multiple blocks passed - fill intermediates, wrapping around midnight
+            var blockIdx = nextBlock
+            while blockIdx != currentWallClockBlock {
                 await markBlockAsAutoFilled(
                     blockIndex: blockIdx,
                     category: lastCategory,
                     label: lastLabel,
                     isBreak: lastSegmentType == .break
                 )
+                blockIdx = (blockIdx + 1) % 72
             }
         }
 
@@ -2134,8 +2142,11 @@ struct MainView: View {
         // The original block already completed and was saved by handleTimerComplete.
         // Now we need to fill any intermediate blocks that would have auto-continued.
 
+        // The next block after the original, wrapping 71 → 0 at midnight
+        let nextBlock = (originalBlockIndex + 1) % 72
+
         // If we're still on the same block, just do a simple auto-continue
-        if currentWallClockBlock == originalBlockIndex + 1 {
+        if currentWallClockBlock == nextBlock {
             // Only one block has passed
             if shouldSuppressAutoContinue {
                 // Check-in limit already reached - show check-in dialog with grace period
@@ -2166,9 +2177,10 @@ struct MainView: View {
 
         print("📱 processRetroactiveAutoContinues: original block \(originalBlockIndex), current \(currentWallClockBlock), limit \(limit)")
 
-        // Fill blocks from (originalBlockIndex + 1) up to (currentWallClockBlock - 1)
-        // These are complete blocks that auto-continued and ran their full duration
-        for blockIdx in (originalBlockIndex + 1)..<currentWallClockBlock {
+        // Fill blocks from (originalBlockIndex + 1) up to (currentWallClockBlock - 1),
+        // wrapping around midnight (block 71 → block 0) when needed.
+        var blockIdx = nextBlock
+        while blockIdx != currentWallClockBlock {
             // Check if we've hit the check-in limit.
             // Only check blocksSinceLastInteraction (incremented inside the loop) —
             // adding blocksAutoFilled here double-counts and exits one block too early,
@@ -2195,13 +2207,15 @@ struct MainView: View {
                 timerManager.incrementInteractionCounter()
                 print("📱 Retroactively filled block \(blockIdx)")
             }
+
+            blockIdx = (blockIdx + 1) % 72
         }
 
         // Now handle the current block
         if timerManager.blocksSinceLastInteraction >= limit {
             // Check-in limit reached - give user a grace period before stopping
             // Calculate when the check-in was triggered (when the last auto-filled block ended)
-            let lastFilledBlockIndex = originalBlockIndex + blocksAutoFilled
+            let lastFilledBlockIndex = (originalBlockIndex + blocksAutoFilled) % 72
             let checkInTriggeredAt = Block.blockEndDate(for: lastFilledBlockIndex)
             let gracePeriod: TimeInterval = 20 * 60  // 20 minutes
 

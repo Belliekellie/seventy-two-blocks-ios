@@ -469,6 +469,7 @@ struct BlockItemView: View {
     @EnvironmentObject var blockManager: BlockManager
     @EnvironmentObject var timerManager: TimerManager
     @Environment(\.colorScheme) var colorScheme
+    @AppStorage("dayStartHour") private var dayStartHour = 6
 
     private var displayNumber: Int {
         segment.displayBlockNumber(blockIndex)
@@ -488,23 +489,29 @@ struct BlockItemView: View {
         isViewingToday && (timerManager.isActive || timerManager.isPaused) && timerManager.currentBlockIndex == blockIndex
     }
 
-    /// Past block - either viewing a past day (all blocks are past) or viewing today with earlier block
-    private var isPastBlock: Bool {
-        if !isViewingToday {
-            // When viewing past days, all blocks are "past"
-            // When viewing future days, none are past
-            return false  // We'll handle this differently - future days get isFutureBlock
-        }
-        return blockIndex < Block.getCurrentBlockIndex()
+    /// Convert a block index to its position within the logical day (0-71).
+    /// The logical day starts at dayStartHour, so blocks before dayStartHour
+    /// (night blocks, midnight-6AM) come AFTER evening blocks in the order.
+    /// Without this, comparing raw indices breaks after midnight.
+    private func logicalPosition(_ blockIndex: Int) -> Int {
+        let dayStartBlock = dayStartHour * 3
+        return (blockIndex - dayStartBlock + 72) % 72
     }
 
-    /// Future block - either viewing a future day (all blocks are future) or viewing today with later block
+    /// Past block - when viewing today with an earlier block index (using logical day order)
+    private var isPastBlock: Bool {
+        if !isViewingToday {
+            return false
+        }
+        return logicalPosition(blockIndex) < logicalPosition(Block.getCurrentBlockIndex())
+    }
+
+    /// Future block - when not viewing today, or when viewing today with a later block index (using logical day order)
     private var isFutureBlock: Bool {
         if !isViewingToday {
-            // When not viewing today, all blocks are effectively "future" (can't start timer)
             return true
         }
-        return blockIndex > Block.getCurrentBlockIndex()
+        return logicalPosition(blockIndex) > logicalPosition(Block.getCurrentBlockIndex())
     }
 
     private var isDone: Bool {
