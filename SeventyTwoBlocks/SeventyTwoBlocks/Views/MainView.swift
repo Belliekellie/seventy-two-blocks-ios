@@ -585,6 +585,14 @@ struct MainView: View {
                         timerManager.isInCheckInGracePeriod = false
                     }
 
+                    // Capture original block info BEFORE action changes timer state.
+                    // handleContinueWork will change currentBlockIndex, so we need
+                    // to capture the original completed block now for filling intermediates.
+                    let originalCompletedBlockIndex = timerManager.currentBlockIndex
+                    let completionCategory = timerManager.currentCategory
+                    let completionLabel = timerManager.currentLabel
+                    let completionWasBreak = timerManager.isBreak
+
                     switch action {
                     case "continue":
                         // If timer is already running on this block (grace period), just clear the flag above
@@ -608,6 +616,27 @@ struct MainView: View {
                     // If a background completion is in-flight, schedule reload after save finishes
                     if handlingBackgroundCompletion {
                         Task {
+                            // Fill intermediate blocks that auto-continued while backgrounded.
+                            // When the user opens the app via a notification action,
+                            // processRetroactiveAutoContinues (step 6b) is skipped, so
+                            // intermediate blocks between the original timer block and the
+                            // current block would be left unfilled and then auto-skipped.
+                            if let originalIdx = originalCompletedBlockIndex {
+                                let wallClockBlock = Block.getCurrentBlockIndex()
+                                for blockIdx in (originalIdx + 1)..<wallClockBlock {
+                                    if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIdx }),
+                                       block.status != .done && block.status != .skipped {
+                                        await markBlockAsAutoFilled(
+                                            blockIndex: blockIdx,
+                                            category: completionCategory,
+                                            label: completionLabel,
+                                            isBreak: completionWasBreak
+                                        )
+                                        print("📲 Retroactively filled block \(blockIdx) (notification action path)")
+                                    }
+                                }
+                            }
+
                             await self.awaitPendingCompletionSave()
                             await blockManager.reloadBlocks()
                             await goalManager.loadGoals(for: selectedDate)
@@ -1125,22 +1154,32 @@ struct MainView: View {
         print("🔄 saveBlockForContinue: block \(blockIndex), category: \(category ?? "nil"), label: \(label ?? "nil")")
 
         // Find or create the block for the continued work
-        if let block = blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) {
-            print("🔄 Found existing block, updating...")
-            var updatedBlock = block
-            updatedBlock.category = category
-            updatedBlock.label = label
-            // Don't change status — the timer is about to start on this block.
-            // onTimerComplete will mark it .done when it finishes.
-            // Mark as activated (hides moon icon in Night segment)
-            updatedBlock.isActivated = true
-            updatedBlock.updatedAt = ISO8601DateFormatter().string(from: Date())
-            await blockManager.saveBlock(updatedBlock)
-            print("🔄 Block updated successfully")
+        if blockManager.blocks.first(where: { $0.blockIndex == blockIndex }) != nil {
+            print("🔄 Found existing block, updating metadata...")
+
+            // Update ONLY metadata fields in local array — never touch segments/usedSeconds.
+            if let localIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                blockManager.blocks[localIdx].category = category
+                blockManager.blocks[localIdx].label = label
+                blockManager.blocks[localIdx].isActivated = true
+                blockManager.blocks[localIdx].updatedAt = ISO8601DateFormatter().string(from: Date())
+            }
+
+            // TARGETED DB update — only changes category, label, is_activated, updated_at.
+            // Never overwrites segments, usedSeconds, visualFill, or other timer data.
+            // Previously used saveBlock() (full upsert) which caused a race condition:
+            // if the app was backgrounded right after timer start, this save could resume
+            // later and overwrite completed block data (e.g., 1200s) with stale partial
+            // data (e.g., 480s) captured at timer start time.
+            await blockManager.updateBlockMetadata(
+                blockIndex: blockIndex,
+                category: category,
+                label: label
+            )
+            print("🔄 Block metadata updated successfully (targeted)")
         } else {
-            // Block doesn't exist yet, create it
+            // Block doesn't exist yet, create it (full save needed for new rows)
             print("🔄 Block doesn't exist, creating new one...")
-            // Get userId from existing blocks or auth manager
             let userId = blockManager.blocks.first?.userId ?? ""
             if userId.isEmpty {
                 print("⚠️ Warning: No userId found!")
@@ -1168,9 +1207,6 @@ struct MainView: View {
             await blockManager.saveBlock(newBlock)
             print("🔄 New block created")
         }
-        // NOTE: Do NOT call reloadBlocks() here - saveBlock already updates the local array
-        // Calling reloadBlocks() triggers a SwiftUI re-render cycle that can cause
-        // the timer to restart in a loop (the continuation handler gets re-triggered)
     }
 
     // MARK: - Widget / Live Activity Helpers

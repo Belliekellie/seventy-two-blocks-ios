@@ -782,28 +782,108 @@ final class BlockManager: ObservableObject {
         // Find the block being activated
         guard let block = blocks.first(where: { $0.blockIndex == blockIndex }) else { return }
 
+        var newIsActivated = block.isActivated
+        var newStatus = block.status
         var needsSave = false
-        var activatedBlock = block
 
         // Mark as activated (hides moon icon in Night segment)
         if !block.isActivated {
-            activatedBlock.isActivated = true
+            newIsActivated = true
             needsSave = true
         }
 
         // Clear .planned status since timer is starting
         if block.status == .planned {
-            activatedBlock.status = .idle
+            newStatus = .idle
             needsSave = true
             print("📋 Cleared .planned status for block \(blockIndex) — timer is starting")
         }
 
         if needsSave {
+            // Update local array with ONLY the changed fields
             if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
-                blocks[localIdx].isActivated = activatedBlock.isActivated
-                blocks[localIdx].status = activatedBlock.status
+                blocks[localIdx].isActivated = newIsActivated
+                blocks[localIdx].status = newStatus
             }
-            await saveBlock(activatedBlock)
+
+            // TARGETED DB update — only changes is_activated, status, updated_at.
+            // Never overwrites segments, usedSeconds, or other timer data.
+            // Previously used saveBlock() (full upsert) which caused a race condition:
+            // if the app was backgrounded right after timer start, this save could resume
+            // later and overwrite completed block data with stale partial data.
+            do {
+                let db = await supabaseDBAsync()
+                guard let session = try? await supabaseAuth.session else { return }
+
+                struct ActivationFields: Encodable {
+                    let is_activated: Bool
+                    let status: String
+                    let updated_at: String
+                }
+
+                try await db
+                    .from("blocks")
+                    .update(ActivationFields(
+                        is_activated: newIsActivated,
+                        status: newStatus.rawValue,
+                        updated_at: ISO8601DateFormatter().string(from: Date())
+                    ))
+                    .eq("user_id", value: session.user.id.uuidString)
+                    .eq("date", value: today)
+                    .eq("block_index", value: blockIndex)
+                    .execute()
+                print("✅ Activated block \(blockIndex) (targeted update)")
+            } catch {
+                print("❌ Error activating block: \(error)")
+            }
+        }
+    }
+
+    /// Targeted update for block metadata (category, label, activation) without touching timer data.
+    /// This prevents a race condition where a full upsert could overwrite segment data
+    /// if the save resumes after the block has already completed.
+    func updateBlockMetadata(blockIndex: Int, category: String?, label: String?) async {
+        let today = formatDate(Date())
+
+        do {
+            let db = await supabaseDBAsync()
+            guard let session = try? await supabaseAuth.session else { return }
+
+            struct MetadataFields: Encodable {
+                let category: String?
+                let label: String?
+                let is_activated: Bool
+                let updated_at: String
+
+                func encode(to encoder: Encoder) throws {
+                    var container = encoder.container(keyedBy: CodingKeys.self)
+                    // Always include category/label (even null) to clear stale values
+                    try container.encode(category, forKey: .category)
+                    try container.encode(label, forKey: .label)
+                    try container.encode(is_activated, forKey: .is_activated)
+                    try container.encode(updated_at, forKey: .updated_at)
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case category, label, is_activated, updated_at
+                }
+            }
+
+            try await db
+                .from("blocks")
+                .update(MetadataFields(
+                    category: category,
+                    label: label,
+                    is_activated: true,
+                    updated_at: ISO8601DateFormatter().string(from: Date())
+                ))
+                .eq("user_id", value: session.user.id.uuidString)
+                .eq("date", value: today)
+                .eq("block_index", value: blockIndex)
+                .execute()
+            print("✅ Updated block \(blockIndex) metadata (targeted)")
+        } catch {
+            print("❌ Error updating block metadata: \(error)")
         }
     }
 
