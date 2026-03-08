@@ -38,6 +38,10 @@ final class TimerManager: ObservableObject {
     // If timer completes while this is true, the block is discarded (marked skipped)
     @Published var isInCheckInGracePeriod: Bool = false
 
+    // Popup elapsed time: set when user taps "New Block" from popup,
+    // consumed by BlockSheetView.startTimer() to credit popup time to new category
+    var pendingPopupElapsedSeconds: Int?
+
     // Suppresses fill animation briefly after returning from background
     // so the fill bar snaps to the correct position instead of animating there
     @Published var suppressFillAnimation: Bool = false

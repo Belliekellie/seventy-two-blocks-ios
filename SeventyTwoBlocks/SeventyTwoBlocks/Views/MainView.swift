@@ -1047,6 +1047,15 @@ struct MainView: View {
     }
 
     private func saveSnapshot(blockIndex: Int, date: String, snapshot: Run) async {
+        // Don't save if timer is no longer active. This prevents a race where the autosave
+        // fires just before grace period expires: the Task runs AFTER onGracePeriodExpired
+        // clears segments, but the captured snapshot still has the old data. Without this
+        // guard, the stale snapshot overwrites the grace period skip in the database.
+        guard timerManager.isActive else {
+            print("💾 saveSnapshot: Skipping - timer no longer active")
+            return
+        }
+
         // Don't save if user has clicked Stop on notification but it hasn't been processed yet
         // This prevents the autosave timer from saving stale data after the user intended to stop
         if NotificationManager.shared.pendingAction == "stop" {
@@ -1637,12 +1646,41 @@ struct MainView: View {
             }
 
             // Use remote segments if available, otherwise local
-            let existingSegments: [BlockSegment]
+            var existingSegments: [BlockSegment]
             if !remoteSegments.isEmpty {
                 existingSegments = remoteSegments
             } else {
                 let targetBlock = blockManager.blocks.first { $0.blockIndex == blockIndex }
                 existingSegments = targetBlock?.segments ?? []
+            }
+
+            // Credit popup elapsed time as break (only when coming from popup,
+            // not from grace period check-in where timer is already running)
+            if !timerManager.isActive {
+                let blockStartAt = Block.blockStartDate(for: blockIndex)
+                let elapsedSinceBlockStart = Date().timeIntervalSince(blockStartAt)
+                let elapsedSeconds = Int(elapsedSinceBlockStart)
+                let existingSegmentSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+                let additionalSeconds = elapsedSeconds - existingSegmentSeconds
+                if additionalSeconds > 5 {
+                    let breakSegment = BlockSegment(
+                        type: .break,
+                        seconds: min(additionalSeconds, 1200 - existingSegmentSeconds),
+                        category: nil,
+                        label: nil,
+                        startElapsed: existingSegmentSeconds
+                    )
+                    existingSegments.append(breakSegment)
+                    print("📱 handleTakeBreak: Created break elapsed segment: \(additionalSeconds)s for popup time")
+
+                    let totalSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
+                    if let blockIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+                        blockManager.blocks[blockIdx].segments = existingSegments
+                        blockManager.blocks[blockIdx].usedSeconds = totalSeconds
+                        blockManager.blocks[blockIdx].visualFill = min(Double(totalSeconds) / 1200.0, 1.0)
+                        blockManager.blocks[blockIdx].progress = min(Double(totalSeconds) / 1200.0, 1.0) * 100
+                    }
+                }
             }
 
             timerManager.continueToNextBlock(
@@ -1674,6 +1712,12 @@ struct MainView: View {
     }
 
     private func handleStartNewBlock() {
+        // Calculate popup elapsed time BEFORE dismissing (dismiss resets timer state)
+        let blockIndex = Block.getCurrentBlockIndex()
+        let blockStartAt = Block.blockStartDate(for: blockIndex)
+        let elapsedSeconds = Int(Date().timeIntervalSince(blockStartAt))
+        timerManager.pendingPopupElapsedSeconds = elapsedSeconds > 5 ? elapsedSeconds : nil
+
         // Stop the timer if still running (e.g., mid-block break notification)
         if timerManager.isActive {
             timerManager.stopTimer(markComplete: false)

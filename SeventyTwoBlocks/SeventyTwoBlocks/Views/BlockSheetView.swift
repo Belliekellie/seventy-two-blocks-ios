@@ -994,6 +994,28 @@ struct BlockSheetView: View {
             await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
         }
 
+        // Credit popup elapsed time as break (when coming from "New Block" popup)
+        var segments = block.segments
+        var visualFill = block.visualFill
+        if let popupElapsed = timerManager.pendingPopupElapsedSeconds {
+            let existingSeconds = segments.reduce(0) { $0 + $1.seconds }
+            let additionalSeconds = popupElapsed - existingSeconds
+            if additionalSeconds > 5 {
+                let segment = BlockSegment(
+                    type: .break,
+                    seconds: min(additionalSeconds, 1200 - existingSeconds),
+                    category: nil,
+                    label: nil,
+                    startElapsed: existingSeconds
+                )
+                segments.append(segment)
+                let totalSeconds = segments.reduce(0) { $0 + $1.seconds }
+                visualFill = min(Double(totalSeconds) / 1200.0, 1.0)
+                print("📱 BlockSheetView: Created break elapsed segment: \(additionalSeconds)s for popup time")
+            }
+            timerManager.pendingPopupElapsedSeconds = nil
+        }
+
         timerManager.resetInteractionCounter()
         timerManager.startTimer(
             for: block.blockIndex,
@@ -1001,8 +1023,8 @@ struct BlockSheetView: View {
             isBreakMode: true,
             category: category,
             label: normalizeLabel(label),
-            existingSegments: block.segments,
-            existingVisualFill: block.visualFill
+            existingSegments: segments,
+            existingVisualFill: visualFill
         )
 
         // Start Live Activity for break
@@ -1028,6 +1050,28 @@ struct BlockSheetView: View {
             await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
         }
 
+        // Credit popup elapsed time with the chosen category (when coming from "New Block" popup)
+        var segments = block.segments
+        var visualFill = block.visualFill
+        if let popupElapsed = timerManager.pendingPopupElapsedSeconds {
+            let existingSeconds = segments.reduce(0) { $0 + $1.seconds }
+            let additionalSeconds = popupElapsed - existingSeconds
+            if additionalSeconds > 5 {
+                let segment = BlockSegment(
+                    type: .work,
+                    seconds: min(additionalSeconds, 1200 - existingSeconds),
+                    category: category,
+                    label: normalizeLabel(label),
+                    startElapsed: existingSeconds
+                )
+                segments.append(segment)
+                let totalSeconds = segments.reduce(0) { $0 + $1.seconds }
+                visualFill = min(Double(totalSeconds) / 1200.0, 1.0)
+                print("📱 BlockSheetView: Created elapsed segment: \(additionalSeconds)s with new category for popup time")
+            }
+            timerManager.pendingPopupElapsedSeconds = nil
+        }
+
         // Duration calculated automatically based on block boundary
         // Pass existing segments and visual fill so timer continues from where it left off
         timerManager.resetInteractionCounter()
@@ -1037,8 +1081,8 @@ struct BlockSheetView: View {
             isBreakMode: false,
             category: category,
             label: normalizeLabel(label),
-            existingSegments: block.segments,
-            existingVisualFill: block.visualFill
+            existingSegments: segments,
+            existingVisualFill: visualFill
         )
 
         // Start Live Activity
