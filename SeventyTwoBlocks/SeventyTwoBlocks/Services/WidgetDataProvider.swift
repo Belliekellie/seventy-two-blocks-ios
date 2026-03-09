@@ -144,6 +144,13 @@ final class WidgetDataProvider {
     ) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
+        // Check if user has disabled Live Activities in app settings
+        // Default is true (enabled) — UserDefaults.bool returns false for unset keys,
+        // so we check if the key exists first.
+        if UserDefaults.standard.object(forKey: "liveActivityEnabled") != nil {
+            guard UserDefaults.standard.bool(forKey: "liveActivityEnabled") else { return }
+        }
+
         // End ALL existing activities BEFORE starting new one
         // This prevents duplicate activities showing in Dynamic Island (race condition fix)
         let existingActivities = Activity<TimerActivityAttributes>.activities

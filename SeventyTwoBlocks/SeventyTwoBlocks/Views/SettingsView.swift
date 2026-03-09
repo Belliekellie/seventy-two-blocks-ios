@@ -33,6 +33,9 @@ struct SettingsView: View {
     @AppStorage("segmentNameAfternoon") private var segmentNameAfternoon = "Afternoon & Evening"
     @AppStorage("segmentNameNight") private var segmentNameNight = "Night"
 
+    // Live Activity
+    @AppStorage("liveActivityEnabled") private var liveActivityEnabled = true
+
     // Focus Sounds
     @AppStorage("focusSoundEnabled") private var focusSoundEnabled = false
     @AppStorage("preferredFocusSound") private var preferredFocusSound = "rain"
@@ -119,10 +122,24 @@ struct SettingsView: View {
                             Text("Play sounds in silent mode")
                         }
                     }
+
+                    Toggle(isOn: $liveActivityEnabled) {
+                        HStack(spacing: 8) {
+                            Text("📍")
+                            Text("Live Activity")
+                        }
+                    }
+                    .onChange(of: liveActivityEnabled) { _, enabled in
+                        if !enabled {
+                            WidgetDataProvider.shared.endLiveActivity()
+                        }
+                    }
                 } header: {
                     Text("Timer")
                 } footer: {
-                    if playSoundsInSilentMode {
+                    if !liveActivityEnabled {
+                        Text("Live Activity is off. The timer on your Lock Screen and Dynamic Island won't show.")
+                    } else if playSoundsInSilentMode {
                         Text("Completion chime will play even when your phone is on silent.")
                     } else if disableAutoContinue {
                         Text("When disabled, timer won't automatically continue to the next block.")
