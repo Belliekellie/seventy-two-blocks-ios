@@ -97,21 +97,21 @@ struct MainView: View {
                     // Divider
                     Divider()
 
-                    // Main Goal + Action List (for any day)
-                    // Extra padding to align with block colors (not transparent spacing)
+                    // Main Goal (compact single row)
                     OneThingView(selectedDate: $selectedDate)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
+
+                    // Progress bar (always visible, sticky)
+                    SetProgressBarView()
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
                 }
                 .background(Color(.systemBackground))
 
                 // SCROLLABLE CONTENT
                 ScrollView {
                     VStack(spacing: 12) {
-                        // Set progress bar
-                        SetProgressBarView()
-                            .padding(.horizontal, 4)
-
                         // Block grid - 72 blocks for the day
                         // No extra padding - blocks define the alignment
                         BlockGridView(
@@ -1918,16 +1918,17 @@ struct MainView: View {
         // Only check today's blocks - past days' orphaned sessions are handled by auto-skip
         guard isToday else { return }
 
-        // Find block with an active (non-ended) snapshot within a recent window.
-        // The timer may have been on the PREVIOUS block (which completed while app was killed),
-        // so we look back a few blocks, not just the exact current one.
+        // Find block with an active (non-ended) snapshot anywhere in today's blocks.
+        // The orphaned timer could be many blocks in the past (e.g., user started at 9 AM,
+        // app was killed, user returns at 10 PM). We search ALL blocks, not just recent ones.
+        // The auto-continue limit (blocksUntilCheckIn) is applied later when deciding how
+        // many blocks to retroactively fill — it should NOT restrict the search range.
         // CRITICAL: Also verify the block's date matches todayString. A cross-day bug could
         // write yesterday's snapshot onto today's block at the same index. Without this check,
         // we'd restart a timer based on stale data, causing "ghost blocks from yesterday."
         let currentWallBlock = Block.getCurrentBlockIndex()
-        let searchStart = max(0, currentWallBlock - blocksUntilCheckIn)
         guard let orphanedBlock = blockManager.blocks.first(where: { block in
-            guard block.blockIndex >= searchStart && block.blockIndex <= currentWallBlock else { return false }
+            guard block.blockIndex <= currentWallBlock else { return false }
             guard block.date == todayString else { return false }
             guard let snapshot = block.activeRunSnapshot else { return false }
             return snapshot.endedAt == nil
@@ -2081,15 +2082,35 @@ struct MainView: View {
         // Now trigger auto-continue to current block if applicable
         let currentWallClockBlock = Block.getCurrentBlockIndex()
 
-        // Don't auto-continue if too many blocks have passed (check-in threshold)
         // Use modular arithmetic to handle midnight wrap (block 71 → 0)
         let blocksPassed = (currentWallClockBlock - orphanedBlock.blockIndex + 72) % 72
+
         if blocksPassed > blocksUntilCheckIn {
-            print("🔄 Too many blocks passed (\(blocksPassed)) since orphaned block - not auto-continuing")
+            // Too many blocks passed for auto-continue to the current block,
+            // but we still need to fill the blocks that WOULD have auto-continued
+            // (up to blocksUntilCheckIn). Without this, those blocks get skipped
+            // even though the timer would have been running through them.
+            let nextBlock = (orphanedBlock.blockIndex + 1) % 72
+            var blockIdx = nextBlock
+            var filled = 0
+            while filled < blocksUntilCheckIn && blockIdx != currentWallClockBlock {
+                let blockEndTime = Block.blockEndDate(for: blockIdx)
+                if Date() > blockEndTime {
+                    await markBlockAsAutoFilled(
+                        blockIndex: blockIdx,
+                        category: lastCategory,
+                        label: lastLabel,
+                        isBreak: lastSegmentType == .break
+                    )
+                    filled += 1
+                }
+                blockIdx = (blockIdx + 1) % 72
+            }
+            print("🔄 Filled \(filled) retroactive blocks after orphaned recovery, stopped (too many blocks passed: \(blocksPassed))")
             return
         }
 
-        // Fill any intermediate blocks and continue to current
+        // Within auto-continue range — fill any intermediate blocks and continue to current
         let nextBlock = (orphanedBlock.blockIndex + 1) % 72
         if currentWallClockBlock != nextBlock && blocksPassed > 1 {
             // Multiple blocks passed - fill intermediates, wrapping around midnight
