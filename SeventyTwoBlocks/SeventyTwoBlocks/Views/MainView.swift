@@ -21,6 +21,9 @@ struct MainView: View {
     @State private var backgroundedAt: Date?
     /// Signaled when saveTimerCompletion finishes, so foreground recovery can wait for it
     @State private var pendingCompletionSave: Task<Void, Never>?
+    /// Guards against processAutoSkip racing with foreground recovery.
+    /// While true, checkForBlockChange skips processAutoSkip calls.
+    @State private var isProcessingForegroundRecovery = false
 
     private var currentBlockIndex: Int {
         Block.getCurrentBlockIndex()
@@ -469,6 +472,11 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Block processAutoSkip from checkForBlockChange during recovery.
+            // Without this, the 10-second periodic timer can fire mid-recovery,
+            // see retroactive blocks as idle (fills haven't run yet), and skip them.
+            isProcessingForegroundRecovery = true
+
             // Track whether a background completion is being processed
             // If so, skip independent reloadBlocks (the completion flow handles its own save+reload)
             // This prevents a race where reloadBlocks loads stale DB data before the completion save finishes
@@ -645,6 +653,7 @@ struct MainView: View {
                             await blockManager.reloadBlocks()
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                            isProcessingForegroundRecovery = false
                         }
                     }
                 }
@@ -664,6 +673,7 @@ struct MainView: View {
                 if !isToday && (timerManager.showTimerComplete || timerManager.showBreakComplete) {
                     handleStop()
                     showOverview = false  // Dismiss overview left open from a previous day
+                    isProcessingForegroundRecovery = false
                 } else if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
                     let timeSinceCompletion = Date().timeIntervalSince(completedAt)
                     let autoContinueSeconds: TimeInterval = 25
@@ -690,6 +700,7 @@ struct MainView: View {
                             await blockManager.reloadBlocks()
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                            isProcessingForegroundRecovery = false
                         }
                     } else {
                         // Still within auto-continue period — show dialog with REMAINING time
@@ -699,6 +710,7 @@ struct MainView: View {
                             autoContinueEndAt: autoContinueEndAt,
                             isBreak: wasBreak
                         )
+                        isProcessingForegroundRecovery = false
                     }
                 } else if timerManager.showBreakComplete, let completedAt = timerManager.timerCompletedAt {
                     let timeSinceCompletion = Date().timeIntervalSince(completedAt)
@@ -721,6 +733,7 @@ struct MainView: View {
                             await blockManager.reloadBlocks()
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                            isProcessingForegroundRecovery = false
                         }
                     } else {
                         // Still within break auto-continue period
@@ -730,7 +743,11 @@ struct MainView: View {
                             autoContinueEndAt: autoContinueEndAt,
                             isBreak: true
                         )
+                        isProcessingForegroundRecovery = false
                     }
+                } else {
+                    // No background completion to process
+                    isProcessingForegroundRecovery = false
                 }
             }
 
@@ -747,6 +764,7 @@ struct MainView: View {
                     await blockManager.reloadBlocks()
                     await goalManager.loadGoals(for: selectedDate)
                     await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
+                    isProcessingForegroundRecovery = false
                 }
             }
 
@@ -1046,6 +1064,11 @@ struct MainView: View {
                 print("⚠️ SAVE MISMATCH: block \(blockIndex) local usedSeconds=\(savedBlock.usedSeconds) after save, expected \(actualUsedSeconds)")
             }
         }
+
+        // Skip reload during foreground recovery — the recovery Task does its own
+        // reload after all retroactive fills are saved. Reloading here would load
+        // stale DB data (retroactive blocks not yet saved) and overwrite local state.
+        guard !isProcessingForegroundRecovery else { return }
 
         await blockManager.reloadBlocks()
 
@@ -1918,6 +1941,11 @@ struct MainView: View {
         // Only check today's blocks - past days' orphaned sessions are handled by auto-skip
         guard isToday else { return }
 
+        // Block processAutoSkip from checkForBlockChange during recovery (same
+        // race protection as the warm foreground path). Cleared at the end.
+        isProcessingForegroundRecovery = true
+        defer { isProcessingForegroundRecovery = false }
+
         // Find block with an active (non-ended) snapshot anywhere in today's blocks.
         // The orphaned timer could be many blocks in the past (e.g., user started at 9 AM,
         // app was killed, user returns at 10 PM). We search ALL blocks, not just recent ones.
@@ -2085,6 +2113,11 @@ struct MainView: View {
         // Use modular arithmetic to handle midnight wrap (block 71 → 0)
         let blocksPassed = (currentWallClockBlock - orphanedBlock.blockIndex + 72) % 72
 
+        // Collect blocks to fill and update locally FIRST (prevents grid flash).
+        // Then start timer / stop. Then save to DB.
+        let isBreakMode = lastSegmentType == .break
+        var blocksToFill: [Int] = []
+
         if blocksPassed > blocksUntilCheckIn {
             // Too many blocks passed for auto-continue to the current block,
             // but we still need to fill the blocks that WOULD have auto-continued
@@ -2092,54 +2125,73 @@ struct MainView: View {
             // even though the timer would have been running through them.
             let nextBlock = (orphanedBlock.blockIndex + 1) % 72
             var blockIdx = nextBlock
-            var filled = 0
-            while filled < blocksUntilCheckIn && blockIdx != currentWallClockBlock {
+            while blocksToFill.count < blocksUntilCheckIn && blockIdx != currentWallClockBlock {
                 let blockEndTime = Block.blockEndDate(for: blockIdx)
                 if Date() > blockEndTime {
-                    await markBlockAsAutoFilled(
-                        blockIndex: blockIdx,
-                        category: lastCategory,
-                        label: lastLabel,
-                        isBreak: lastSegmentType == .break
-                    )
-                    filled += 1
+                    blocksToFill.append(blockIdx)
                 }
                 blockIdx = (blockIdx + 1) % 72
             }
-            print("🔄 Filled \(filled) retroactive blocks after orphaned recovery, stopped (too many blocks passed: \(blocksPassed))")
-            return
-        }
-
-        // Within auto-continue range — fill any intermediate blocks and continue to current
-        let nextBlock = (orphanedBlock.blockIndex + 1) % 72
-        if currentWallClockBlock != nextBlock && blocksPassed > 1 {
-            // Multiple blocks passed - fill intermediates, wrapping around midnight
-            var blockIdx = nextBlock
-            while blockIdx != currentWallClockBlock {
-                await markBlockAsAutoFilled(
-                    blockIndex: blockIdx,
-                    category: lastCategory,
-                    label: lastLabel,
-                    isBreak: lastSegmentType == .break
-                )
-                blockIdx = (blockIdx + 1) % 72
+        } else {
+            // Within auto-continue range — fill any intermediate blocks
+            let nextBlock = (orphanedBlock.blockIndex + 1) % 72
+            if currentWallClockBlock != nextBlock && blocksPassed > 1 {
+                var blockIdx = nextBlock
+                while blockIdx != currentWallClockBlock {
+                    blocksToFill.append(blockIdx)
+                    blockIdx = (blockIdx + 1) % 72
+                }
             }
         }
 
-        // Start timer on current block (auto-continue)
-        if currentWallClockBlock < 72 && !shouldSuppressAutoContinue {
-            print("🔄 Auto-continuing to block \(currentWallClockBlock) after orphaned session recovery")
-            // Restore timer manager state so handleContinueWork reads the correct category/label
-            // (On a fresh launch after app kill, timerManager state is empty)
-            timerManager.currentCategory = lastCategory
-            timerManager.currentLabel = lastLabel
-            if lastSegmentType == .break {
-                timerManager.isBreak = true
-                timerManager.lastWorkCategory = lastCategory
-                timerManager.lastWorkLabel = lastLabel
+        // Update all blocks in memory immediately (no awaits, instant UI update)
+        for fillIdx in blocksToFill {
+            let segment = BlockSegment(
+                type: isBreakMode ? .break : .work,
+                seconds: 1200,
+                category: isBreakMode ? nil : lastCategory,
+                label: isBreakMode ? nil : lastLabel,
+                startElapsed: 0
+            )
+            if let arrIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == fillIdx }) {
+                blockManager.blocks[arrIdx].status = .done
+                blockManager.blocks[arrIdx].usedSeconds = 1200
+                blockManager.blocks[arrIdx].progress = 100.0
+                blockManager.blocks[arrIdx].visualFill = 1.0
+                blockManager.blocks[arrIdx].segments = [segment]
+                blockManager.blocks[arrIdx].activeRunSnapshot = nil
+                blockManager.blocks[arrIdx].category = lastCategory
+                blockManager.blocks[arrIdx].label = lastLabel
             }
-            timerManager.incrementInteractionCounter()
-            handleContinueWork(skipRemoteCheck: true)
+            blocksWithTimerUsage.insert(fillIdx)
+        }
+
+        if blocksPassed > blocksUntilCheckIn {
+            print("🔄 Filled \(blocksToFill.count) retroactive blocks after orphaned recovery, stopped (too many blocks passed: \(blocksPassed))")
+        } else {
+            // Start timer on current block (auto-continue)
+            if currentWallClockBlock < 72 && !shouldSuppressAutoContinue {
+                print("🔄 Auto-continuing to block \(currentWallClockBlock) after orphaned session recovery")
+                timerManager.currentCategory = lastCategory
+                timerManager.currentLabel = lastLabel
+                if isBreakMode {
+                    timerManager.isBreak = true
+                    timerManager.lastWorkCategory = lastCategory
+                    timerManager.lastWorkLabel = lastLabel
+                }
+                timerManager.incrementInteractionCounter()
+                handleContinueWork(skipRemoteCheck: true)
+            }
+        }
+
+        // Save filled blocks to database (async, UI already updated above)
+        for fillIdx in blocksToFill {
+            await markBlockAsAutoFilled(
+                blockIndex: fillIdx,
+                category: lastCategory,
+                label: lastLabel,
+                isBreak: isBreakMode
+            )
         }
     }
 
@@ -2198,41 +2250,48 @@ struct MainView: View {
 
         print("📱 processRetroactiveAutoContinues: original block \(originalBlockIndex), current \(currentWallClockBlock), limit \(limit)")
 
-        // Fill blocks from (originalBlockIndex + 1) up to (currentWallClockBlock - 1),
-        // wrapping around midnight (block 71 → block 0) when needed.
+        // PHASE 1: Determine which blocks to fill and update them ALL locally first.
+        // This ensures the grid shows correct data on the very first render,
+        // before any async database saves happen (prevents flash/glitch).
+        var blocksToFill: [Int] = []
         var blockIdx = nextBlock
+        var tempCounter = timerManager.blocksSinceLastInteraction
         while blockIdx != currentWallClockBlock {
-            // Check if we've hit the check-in limit.
-            // Only check blocksSinceLastInteraction (incremented inside the loop) —
-            // adding blocksAutoFilled here double-counts and exits one block too early,
-            // filling 2 blocks instead of 3 with the default limit of 3.
-            if timerManager.blocksSinceLastInteraction >= limit {
-                print("📱 Check-in limit reached after \(blocksAutoFilled) retroactive blocks")
-                break
-            }
-
-            // Calculate when this block would have started (after auto-continue delay)
-            // Each block starts 25s after the previous one ended
-            // Block N ends at its block boundary, Block N+1 starts 25s later
+            if tempCounter >= limit { break }
             let blockEndTime = Block.blockEndDate(for: blockIdx)
-
-            // Only fill if we're past this block's end time
             if Date() > blockEndTime {
-                await markBlockAsAutoFilled(
-                    blockIndex: blockIdx,
-                    category: category,
-                    label: label,
-                    isBreak: isBreak
-                )
-                blocksAutoFilled += 1
-                timerManager.incrementInteractionCounter()
-                print("📱 Retroactively filled block \(blockIdx)")
+                blocksToFill.append(blockIdx)
+                tempCounter += 1
             }
-
             blockIdx = (blockIdx + 1) % 72
         }
 
-        // Now handle the current block
+        // Update all blocks in memory immediately (synchronous, no awaits)
+        for fillIdx in blocksToFill {
+            let segment = BlockSegment(
+                type: isBreak ? .break : .work,
+                seconds: 1200,
+                category: isBreak ? nil : category,
+                label: isBreak ? nil : label,
+                startElapsed: 0
+            )
+            if let arrIdx = blockManager.blocks.firstIndex(where: { $0.blockIndex == fillIdx }) {
+                blockManager.blocks[arrIdx].status = .done
+                blockManager.blocks[arrIdx].usedSeconds = 1200
+                blockManager.blocks[arrIdx].progress = 100.0
+                blockManager.blocks[arrIdx].visualFill = 1.0
+                blockManager.blocks[arrIdx].segments = [segment]
+                blockManager.blocks[arrIdx].activeRunSnapshot = nil
+                blockManager.blocks[arrIdx].category = category
+                blockManager.blocks[arrIdx].label = label
+            }
+            blocksWithTimerUsage.insert(fillIdx)
+            timerManager.incrementInteractionCounter()
+            blocksAutoFilled += 1
+        }
+
+        // PHASE 2: Now handle the current block (start timer or stop).
+        // This runs before DB saves so the user sees the timer immediately.
         if timerManager.blocksSinceLastInteraction >= limit {
             // Check-in limit reached - give user a grace period before stopping
             // Calculate when the check-in was triggered (when the last auto-filled block ended)
@@ -2264,6 +2323,17 @@ struct MainView: View {
             timerManager.incrementInteractionCounter()
             handleContinueWork(skipRemoteCheck: true)
             print("📱 Started timer on block \(currentWallClockBlock) after \(blocksAutoFilled) retroactive fills")
+        }
+
+        // PHASE 3: Save filled blocks to database (async, UI already updated above).
+        for fillIdx in blocksToFill {
+            await markBlockAsAutoFilled(
+                blockIndex: fillIdx,
+                category: category,
+                label: label,
+                isBreak: isBreak
+            )
+            print("📱 Retroactively filled block \(fillIdx) (DB save)")
         }
     }
 
@@ -2500,8 +2570,12 @@ struct MainView: View {
         if newBlockIndex != lastCheckedBlockIndex {
             lastCheckedBlockIndex = newBlockIndex
 
-            // Run auto-skip for past blocks (only for today's data)
-            if isToday {
+            // Run auto-skip for past blocks (only for today's data).
+            // Skip during foreground recovery — the recovery Tasks fill retroactive
+            // blocks asynchronously, and running processAutoSkip before they finish
+            // would incorrectly mark those blocks as skipped (they look idle until
+            // the recovery Task updates them).
+            if isToday && !isProcessingForegroundRecovery {
                 Task {
                     await blockManager.processAutoSkip(currentBlockIndex: newBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
