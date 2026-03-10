@@ -710,6 +710,7 @@ final class BlockManager: ObservableObject {
                 updatedBlock.status = .skipped
                 print("⏭️ Auto-skipping block \(block.blockIndex)")
             } else {
+                print("🛡️ Block \(block.blockIndex) protected by blocksWithTimerUsage (status=\(block.status), usedSeconds=\(block.usedSeconds))")
                 continue  // Had timer usage this session, leave as-is
             }
 

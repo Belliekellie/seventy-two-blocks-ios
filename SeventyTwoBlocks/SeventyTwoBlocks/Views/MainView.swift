@@ -455,6 +455,12 @@ struct MainView: View {
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .task {
+            // Block processAutoSkip from the 10-second timer during the entire
+            // initial load + recovery sequence. Without this, the timer can fire
+            // after blocks load but before orphaned recovery runs, marking
+            // retroactive blocks as skipped before recovery can fill them.
+            isProcessingForegroundRecovery = true
+
             async let blocksLoad: Void = blockManager.loadBlocks(for: selectedDate)
             async let goalsLoad: Void = goalManager.loadGoals(for: selectedDate)
             _ = await (blocksLoad, goalsLoad)
@@ -470,6 +476,8 @@ struct MainView: View {
             if isToday {
                 await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
             }
+
+            isProcessingForegroundRecovery = false
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             // Block processAutoSkip from checkForBlockChange during recovery.
@@ -650,10 +658,14 @@ struct MainView: View {
                             }
 
                             await self.awaitPendingCompletionSave()
-                            await blockManager.reloadBlocks()
+                            // DON'T reload — local state is authoritative (same as step 6b)
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                             isProcessingForegroundRecovery = false
+                            // Deferred reload
+                            try? await Task.sleep(for: .seconds(3))
+                            guard !self.isProcessingForegroundRecovery else { return }
+                            await blockManager.reloadBlocks()
                         }
                     }
                 }
@@ -694,13 +706,19 @@ struct MainView: View {
                                 autoContinueDelay: autoContinueSeconds,
                                 isBreak: wasBreak
                             )
-                            // THEN wait for the previous block's completion save before reloading
-                            // This prevents reloadBlocks from loading stale data
+                            // Wait for the original block's save to finish
                             await self.awaitPendingCompletionSave()
-                            await blockManager.reloadBlocks()
+                            // DON'T reload from DB here — local state is authoritative.
+                            // Phase 1 already updated blocks in memory, Phase 3 saved to DB.
+                            // Reloading risks overwriting fills with stale DB data if saves
+                            // haven't fully propagated (Supabase latency, auth issues, etc.)
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                             isProcessingForegroundRecovery = false
+                            // Deferred reload: sync with DB after all saves are guaranteed complete
+                            try? await Task.sleep(for: .seconds(3))
+                            guard !self.isProcessingForegroundRecovery else { return }
+                            await blockManager.reloadBlocks()
                         }
                     } else {
                         // Still within auto-continue period — show dialog with REMAINING time
@@ -728,12 +746,15 @@ struct MainView: View {
                                 autoContinueDelay: autoContinueSeconds,
                                 isBreak: true
                             )
-                            // THEN wait for the previous block's completion save before reloading
                             await self.awaitPendingCompletionSave()
-                            await blockManager.reloadBlocks()
+                            // DON'T reload — local state is authoritative (same as work path above)
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                             isProcessingForegroundRecovery = false
+                            // Deferred reload
+                            try? await Task.sleep(for: .seconds(3))
+                            guard !self.isProcessingForegroundRecovery else { return }
+                            await blockManager.reloadBlocks()
                         }
                     } else {
                         // Still within break auto-continue period
@@ -1941,10 +1962,10 @@ struct MainView: View {
         // Only check today's blocks - past days' orphaned sessions are handled by auto-skip
         guard isToday else { return }
 
-        // Block processAutoSkip from checkForBlockChange during recovery (same
-        // race protection as the warm foreground path). Cleared at the end.
-        isProcessingForegroundRecovery = true
-        defer { isProcessingForegroundRecovery = false }
+        // NOTE: isProcessingForegroundRecovery is managed by the caller (.task wrapper
+        // or foreground handler). This function does NOT set/clear it — doing so via defer
+        // would prematurely clear the flag before the caller's processAutoSkip runs,
+        // opening a window where the 10-second timer could skip retroactive blocks.
 
         // Find block with an active (non-ended) snapshot anywhere in today's blocks.
         // The orphaned timer could be many blocks in the past (e.g., user started at 9 AM,
@@ -2579,6 +2600,8 @@ struct MainView: View {
                 Task {
                     await blockManager.processAutoSkip(currentBlockIndex: newBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                 }
+            } else if isProcessingForegroundRecovery {
+                print("🛡️ checkForBlockChange: skipping processAutoSkip — recovery in progress")
             }
 
             // Check if current block is planned
