@@ -485,6 +485,14 @@ struct MainView: View {
             // see retroactive blocks as idle (fills haven't run yet), and skip them.
             isProcessingForegroundRecovery = true
 
+            // CRITICAL: Reset the check-in counter IMMEDIATELY on foreground return.
+            // The user opening the app IS an interaction — they're present.
+            // This MUST happen BEFORE shouldSuppressAutoContinue is checked (step 2),
+            // because retroactive fills from a PREVIOUS session inflate the counter.
+            // Without this early reset, the stale counter makes the app think the user
+            // was auto-continuing unattended, and it stops everything before recovery runs.
+            timerManager.resetInteractionCounter()
+
             // Track whether a background completion is being processed
             // If so, skip independent reloadBlocks (the completion flow handles its own save+reload)
             // This prevents a race where reloadBlocks loads stale DB data before the completion save finishes
@@ -789,12 +797,9 @@ struct MainView: View {
                 }
             }
 
-            // 9. Reset check-in counter on foreground return.
-            // The user returning to the app confirms they're present — reset the counter
-            // so they get a fresh N blocks before the next check-in.
-            // Tasks from step 6b (retroactive processing) execute AFTER this synchronous code,
-            // so they see counter=0 and fill blocks from zero up to the limit.
-            timerManager.resetInteractionCounter()
+            // NOTE: resetInteractionCounter() was moved to the TOP of this handler
+            // (right after isProcessingForegroundRecovery = true) so it runs BEFORE
+            // shouldSuppressAutoContinue is checked. See comment there for details.
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             backgroundedAt = Date()
