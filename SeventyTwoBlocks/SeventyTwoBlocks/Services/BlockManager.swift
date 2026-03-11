@@ -78,6 +78,16 @@ final class BlockManager: ObservableObject {
         } catch {
             self.error = error.localizedDescription
             print("Error loading blocks: \(error)")
+
+            // If we're switching to a different day and can't reach the database,
+            // show empty blocks rather than keeping stale blocks from the old day.
+            // But if this is a reload of the SAME day (e.g. foreground return with
+            // no internet), keep the existing blocks — they're still valid local data.
+            let existingDate = blocks.first?.date
+            if existingDate != dateString {
+                blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
+                onBlocksChanged?()
+            }
         }
     }
 
@@ -717,6 +727,19 @@ final class BlockManager: ObservableObject {
             // Update local state immediately
             blocks[i] = updatedBlock
             blocksToSave.append(updatedBlock)
+        }
+
+        // Un-skip the current block if it was previously auto-skipped.
+        // This happens when the app ran earlier, skipped this block (it was past),
+        // but now the user returns while still in this block's time window.
+        // A block you're currently IN should never stay skipped.
+        if let idx = blocks.firstIndex(where: { $0.blockIndex == currentBlockIndex }),
+           blocks[idx].status == .skipped && blocks[idx].usedSeconds == 0 {
+            var restored = blocks[idx]
+            restored.status = .idle
+            blocks[idx] = restored
+            blocksToSave.append(restored)
+            print("♻️ Un-skipped current block \(currentBlockIndex) — it's the active time window")
         }
 
         // Notify UI of changes immediately
