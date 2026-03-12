@@ -21,6 +21,9 @@ struct MainView: View {
     @State private var backgroundedAt: Date?
     /// Signaled when saveTimerCompletion finishes, so foreground recovery can wait for it
     @State private var pendingCompletionSave: Task<Void, Never>?
+    /// Tracks the in-flight autosave (snapshot) write so the completion save can wait for it.
+    /// Prevents the autosave from overwriting the completion save's cleared snapshot marker.
+    @State private var pendingSnapshotSave: Task<Void, Never>?
     /// Guards against processAutoSkip racing with foreground recovery.
     /// While true, checkForBlockChange skips processAutoSkip calls.
     @State private var isProcessingForegroundRecovery = false
@@ -937,8 +940,9 @@ struct MainView: View {
         }
 
         timerManager.onSaveSnapshot = { blockIndex, date, snapshot in
-            Task {
+            self.pendingSnapshotSave = Task {
                 await saveSnapshot(blockIndex: blockIndex, date: date, snapshot: snapshot)
+                self.pendingSnapshotSave = nil
             }
         }
 
@@ -1037,6 +1041,17 @@ struct MainView: View {
     }
 
     private func saveTimerCompletion(blockIndex: Int, date: String, secondsUsed: Int, initialTime: Int, segments: [BlockSegment], visualFill: Double, blockTimeElapsed: Bool, category: String? = nil, label: String? = nil) async {
+        // CRITICAL: Wait for any in-flight autosave to finish before writing completion data.
+        // The autosave and completion save both upsert the same DB row. If the autosave's
+        // write lands AFTER ours, it restores a stale activeRunSnapshot — making the app
+        // think the timer is still running on next launch (triggers phantom block recovery).
+        // By awaiting the autosave first, our write always goes last and wins.
+        if let snapshotTask = pendingSnapshotSave {
+            print("💾 saveTimerCompletion: Waiting for in-flight autosave to finish...")
+            await snapshotTask.value
+            print("💾 saveTimerCompletion: Autosave finished, proceeding with completion save")
+        }
+
         // CRITICAL: Match by BOTH blockIndex AND date to prevent cross-day data leaks.
         // If blockManager.blocks was reloaded for a different day between onTimerComplete
         // and this async save, we must not write to the wrong day's block.
@@ -1091,19 +1106,11 @@ struct MainView: View {
             }
         }
 
-        // Skip reload during foreground recovery — the recovery Task does its own
-        // reload after all retroactive fills are saved. Reloading here would load
-        // stale DB data (retroactive blocks not yet saved) and overwrite local state.
-        guard !isProcessingForegroundRecovery else { return }
-
-        await blockManager.reloadBlocks()
-
-        // Verify reload didn't overwrite with stale data
-        if let reloadedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) {
-            if reloadedBlock.usedSeconds != actualUsedSeconds {
-                print("🚨 RELOAD OVERWROTE BLOCK \(blockIndex): usedSeconds changed from \(actualUsedSeconds) to \(reloadedBlock.usedSeconds) after reloadBlocks!")
-            }
-        }
+        // NOTE: We deliberately do NOT call reloadBlocks() here.
+        // saveBlock() already updates local state. Reloading from the database is
+        // dangerous because a concurrent autosave write may have landed stale data
+        // in the DB (the race condition). Pulling that back would overwrite the
+        // correct completion data we just saved locally.
     }
 
     /// Save a block as skipped when grace period expires without user interaction
@@ -1985,7 +1992,16 @@ struct MainView: View {
             guard block.blockIndex <= currentWallBlock else { return false }
             guard block.date == todayString else { return false }
             guard let snapshot = block.activeRunSnapshot else { return false }
-            return snapshot.endedAt == nil
+            guard snapshot.endedAt == nil else { return false }
+            // Skip blocks that are already done with segment data — they were properly
+            // saved by the completion flow. A stale activeRunSnapshot on a .done block
+            // means the autosave's DB write landed after the completion save (race condition).
+            // Treating this as "orphaned" would overwrite correct data and create phantom blocks.
+            if block.status == .done && !block.segments.isEmpty {
+                print("🔄 Skipping block \(block.blockIndex) — already .done with \(block.segments.count) segments (stale snapshot)")
+                return false
+            }
+            return true
         }) else {
             return
         }
