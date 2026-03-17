@@ -471,6 +471,15 @@ struct MainView: View {
             _ = await NotificationManager.shared.requestPermission()
             NotificationManager.shared.setupNotificationCategories()
 
+            // If the initial load failed (network/auth), retry after a short delay.
+            // This handles the common case where the phone's radio needs a moment
+            // to reconnect after waking from a long sleep.
+            if !blockManager.lastLoadSucceeded {
+                print("⚠️ Initial block load failed — retrying in 3 seconds...")
+                try? await Task.sleep(for: .seconds(3))
+                await blockManager.reloadBlocks()
+            }
+
             // Check for orphaned timer session (app was terminated while timer running)
             // This must run after blocks load but before auto-skip
             await recoverOrphanedTimerSession()
@@ -1097,7 +1106,26 @@ struct MainView: View {
             print("⚠️ UNDER-CREDITED BLOCK \(blockIndex): only \(actualUsedSeconds)s saved for a completed block (expected ~1200s). initialTime=\(initialTime), segmentCount=\(normalizedSegments.count), segments=\(normalizedSegments.map { "\($0.type == .work ? "W" : "B"):\($0.seconds)s" })")
         }
 
-        await blockManager.saveBlock(updatedBlock)
+        // Update local state immediately
+        blockManager.updateBlockLocally(updatedBlock)
+
+        // Targeted DB update — only writes timer result fields, never touches category/label/note/muted etc.
+        // This prevents the race condition where a concurrent autosave could overwrite completion data.
+        await blockManager.updateBlockTimerData(
+            blockIndex: blockIndex,
+            date: date,
+            fields: TimerCompletionFields(
+                status: updatedBlock.status.rawValue,
+                progress: Int(updatedBlock.progress),
+                break_progress: Int(updatedBlock.breakProgress),
+                segments: updatedBlock.segments,
+                used_seconds: updatedBlock.usedSeconds,
+                visual_fill: updatedBlock.visualFill,
+                active_run_snapshot: nil,
+                runs: updatedBlock.runs,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+        )
 
         // Verify save: check local state matches what we saved
         if let savedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) {
@@ -1105,12 +1133,6 @@ struct MainView: View {
                 print("⚠️ SAVE MISMATCH: block \(blockIndex) local usedSeconds=\(savedBlock.usedSeconds) after save, expected \(actualUsedSeconds)")
             }
         }
-
-        // NOTE: We deliberately do NOT call reloadBlocks() here.
-        // saveBlock() already updates local state. Reloading from the database is
-        // dangerous because a concurrent autosave write may have landed stale data
-        // in the DB (the race condition). Pulling that back would overwrite the
-        // correct completion data we just saved locally.
     }
 
     /// Save a block as skipped when grace period expires without user interaction
@@ -1131,8 +1153,26 @@ struct MainView: View {
 
         print("💾 saveGracePeriodSkip: block \(blockIndex) marked as skipped")
 
-        await blockManager.saveBlock(updatedBlock)
-        await blockManager.reloadBlocks()
+        // Update local state immediately
+        blockManager.updateBlockLocally(updatedBlock)
+
+        // Targeted DB update — only writes timer/status fields.
+        // No reloadBlocks() — that can pull back stale autosave data.
+        await blockManager.updateBlockTimerData(
+            blockIndex: blockIndex,
+            date: date,
+            fields: GracePeriodSkipFields(
+                status: BlockStatus.skipped.rawValue,
+                progress: 0,
+                break_progress: 0,
+                segments: [],
+                used_seconds: 0,
+                visual_fill: 0,
+                active_run_snapshot: nil,
+                runs: nil,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+        )
     }
 
     private func saveSnapshot(blockIndex: Int, date: String, snapshot: Run) async {
@@ -1180,22 +1220,38 @@ struct MainView: View {
         updatedBlock.usedSeconds = totalUsedSeconds
         updatedBlock.progress = newProgress
         updatedBlock.breakProgress = newBreakProgress
-        // Save current visual fill so it persists correctly if app crashes or block is auto-marked done
         updatedBlock.visualFill = timerManager.currentVisualFill
         // During break, don't overwrite the block's category/label with the
         // timer's stale work values — the block should keep whatever was set
         // when work was active. Only update during work mode.
-        // Use timer's values directly — don't fall back to block.category/label,
-        // as that reintroduces old values when the user intentionally cleared them.
         if !timerManager.isBreak {
             updatedBlock.category = timerManager.currentCategory
             updatedBlock.label = timerManager.currentLabel
         }
-        // Also save the combined segments so they persist on refresh
-        // Normalize to merge consecutive same-type/category/label segments (prevents micro-segment clutter)
-        updatedBlock.segments = BlockSegment.normalized(allSegments)
+        // Normalize to merge consecutive same-type/category/label segments
+        let normalizedSegments = BlockSegment.normalized(allSegments)
+        updatedBlock.segments = normalizedSegments
 
-        await blockManager.saveBlock(updatedBlock)
+        // Update local state (includes category/label for grid display)
+        blockManager.updateBlockLocally(updatedBlock)
+
+        // Targeted DB write — only snapshot/segments/progress fields.
+        // Category/label are NOT written here (saved by completion or metadata updates).
+        // If app crashes, recovery uses snapshot.currentCategory instead.
+        await blockManager.updateBlockTimerData(
+            blockIndex: blockIndex,
+            date: date,
+            fields: SnapshotFields(
+                active_run_snapshot: snapshot,
+                segments: normalizedSegments,
+                used_seconds: totalUsedSeconds,
+                visual_fill: timerManager.currentVisualFill,
+                progress: Int(newProgress),
+                break_progress: Int(newBreakProgress),
+                runs: updatedBlock.runs,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+        )
         print("💾 Saved snapshot for block \(blockIndex) - usedSeconds: \(totalUsedSeconds), progress: \(Int(newProgress))%, visualFill: \(String(format: "%.1f%%", timerManager.currentVisualFill * 100))")
     }
 
@@ -1430,7 +1486,25 @@ struct MainView: View {
                     finalBlock.visualFill = 1.0
                     finalBlock.activeRunSnapshot = nil
 
-                    await blockManager.saveBlock(finalBlock)
+                    // Update local state
+                    blockManager.updateBlockLocally(finalBlock)
+
+                    // Targeted DB update — only timer result fields
+                    await blockManager.updateBlockTimerData(
+                        blockIndex: blockIndex,
+                        date: finalBlock.date,
+                        fields: TimerCompletionFields(
+                            status: BlockStatus.done.rawValue,
+                            progress: Int(finalBlock.progress),
+                            break_progress: Int(finalBlock.breakProgress),
+                            segments: finalBlock.segments,
+                            used_seconds: finalBlock.usedSeconds,
+                            visual_fill: 1.0,
+                            active_run_snapshot: nil,
+                            runs: finalBlock.runs,
+                            updated_at: ISO8601DateFormatter().string(from: Date())
+                        )
+                    )
 
                     NotificationManager.shared.cancelAllNotifications()
                     WidgetDataProvider.shared.endLiveActivity()
@@ -2025,7 +2099,26 @@ struct MainView: View {
             updatedBlock.progress = 0
             updatedBlock.visualFill = 0
             updatedBlock.activeRunSnapshot = nil
-            await blockManager.saveBlock(updatedBlock)
+
+            // Update local state
+            blockManager.updateBlockLocally(updatedBlock)
+
+            // Targeted DB update — only timer/status fields
+            await blockManager.updateBlockTimerData(
+                blockIndex: orphanedBlock.blockIndex,
+                date: orphanedBlock.date,
+                fields: GracePeriodSkipFields(
+                    status: BlockStatus.skipped.rawValue,
+                    progress: 0,
+                    break_progress: 0,
+                    segments: [],
+                    used_seconds: 0,
+                    visual_fill: 0,
+                    active_run_snapshot: nil,
+                    runs: nil,
+                    updated_at: ISO8601DateFormatter().string(from: Date())
+                )
+            )
             // Don't auto-continue from a failed grace period
             return
         }
@@ -2144,9 +2237,30 @@ struct MainView: View {
         updatedBlock.usedSeconds = finalSegments.reduce(0) { $0 + $1.seconds }
         updatedBlock.visualFill = 1.0  // Full block
         updatedBlock.activeRunSnapshot = nil  // Clear the snapshot
-        updatedBlock.progress = Double(updatedBlock.segments.filter { $0.type == .work }.reduce(0) { $0 + $1.seconds }) / 12.0
+        let workSeconds = updatedBlock.segments.filter { $0.type == .work }.reduce(0) { $0 + $1.seconds }
+        let breakSeconds = updatedBlock.segments.filter { $0.type == .break }.reduce(0) { $0 + $1.seconds }
+        updatedBlock.progress = Double(workSeconds) / 12.0
+        updatedBlock.breakProgress = min(100.0, Double(breakSeconds) / 12.0)
 
-        await blockManager.saveBlock(updatedBlock)
+        // Update local state
+        blockManager.updateBlockLocally(updatedBlock)
+
+        // Targeted DB update — only timer result fields
+        await blockManager.updateBlockTimerData(
+            blockIndex: orphanedBlock.blockIndex,
+            date: orphanedBlock.date,
+            fields: TimerCompletionFields(
+                status: BlockStatus.done.rawValue,
+                progress: Int(updatedBlock.progress),
+                break_progress: Int(updatedBlock.breakProgress),
+                segments: updatedBlock.segments,
+                used_seconds: updatedBlock.usedSeconds,
+                visual_fill: 1.0,
+                active_run_snapshot: nil,
+                runs: updatedBlock.runs,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+        )
         print("✅ Recovered orphaned block \(orphanedBlock.blockIndex) - credited \(remainingSeconds)s additional time, total \(updatedBlock.usedSeconds)s")
 
         // Now trigger auto-continue to current block if applicable
@@ -2414,7 +2528,8 @@ struct MainView: View {
         blockManager.updateBlockLocally(updatedBlock)
         blocksWithTimerUsage.insert(blockIndex)
 
-        await blockManager.saveBlock(updatedBlock)
+        // Upsert — row might not exist yet (retroactive fill for blocks missed while away)
+        await blockManager.upsertAutoFilledBlock(updatedBlock)
         print("📱 markBlockAsAutoFilled: block \(blockIndex) saved with 1200s")
     }
 
@@ -2440,7 +2555,13 @@ struct MainView: View {
             if let skipBlock = blockManager.blocks.first(where: { $0.blockIndex == skipBlockIndex }) {
                 var updatedBlock = skipBlock
                 updatedBlock.status = .skipped
-                await blockManager.saveBlock(updatedBlock)
+                blockManager.updateBlockLocally(updatedBlock)
+                // Targeted update — only changes status
+                await blockManager.updateBlockStatus(
+                    blockIndex: skipBlockIndex,
+                    date: skipBlock.date,
+                    status: .skipped
+                )
             }
         }
 
@@ -2584,8 +2705,13 @@ struct MainView: View {
         Task {
             var updatedBlock = block
             updatedBlock.status = .skipped
-            await blockManager.saveBlock(updatedBlock)
-            await blockManager.reloadBlocks()
+            blockManager.updateBlockLocally(updatedBlock)
+            // Targeted update — only changes status. No reloadBlocks needed.
+            await blockManager.updateBlockStatus(
+                blockIndex: block.blockIndex,
+                date: block.date,
+                status: .skipped
+            )
         }
     }
 

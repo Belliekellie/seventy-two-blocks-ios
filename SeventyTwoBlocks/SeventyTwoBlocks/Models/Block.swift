@@ -257,6 +257,149 @@ struct Block: Codable, Identifiable {
     }
 }
 
+// MARK: - Targeted Update Fields
+// These structs control exactly which database columns are written for each type of save.
+// Using targeted updates prevents concurrent saves from overwriting each other's data.
+
+/// Fields written when a timer completes (block finishes its 20-minute window)
+struct TimerCompletionFields: Encodable {
+    let status: String
+    let progress: Int
+    let break_progress: Int
+    let segments: [BlockSegment]
+    let used_seconds: Int
+    let visual_fill: Double
+    let active_run_snapshot: Run?  // Always nil — clears the snapshot
+    let runs: [Run]?
+    let updated_at: String
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encode(progress, forKey: .progress)
+        try container.encode(break_progress, forKey: .break_progress)
+        try container.encode(segments, forKey: .segments)
+        try container.encode(used_seconds, forKey: .used_seconds)
+        try container.encode(visual_fill, forKey: .visual_fill)
+        // Explicitly encode null to clear the snapshot in the database
+        try container.encode(active_run_snapshot, forKey: .active_run_snapshot)
+        try container.encodeIfPresent(runs, forKey: .runs)
+        try container.encode(updated_at, forKey: .updated_at)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status, progress, break_progress, segments, used_seconds
+        case visual_fill, active_run_snapshot, runs, updated_at
+    }
+}
+
+/// Fields written during the 5-second autosave while timer is running
+struct SnapshotFields: Encodable {
+    let active_run_snapshot: Run?
+    let segments: [BlockSegment]
+    let used_seconds: Int
+    let visual_fill: Double
+    let progress: Int
+    let break_progress: Int
+    let runs: [Run]?
+    let updated_at: String
+
+    private enum CodingKeys: String, CodingKey {
+        case active_run_snapshot, segments, used_seconds, visual_fill
+        case progress, break_progress, runs, updated_at
+    }
+}
+
+/// Fields written when a block is skipped during grace period
+struct GracePeriodSkipFields: Encodable {
+    let status: String
+    let progress: Int
+    let break_progress: Int
+    let segments: [BlockSegment]
+    let used_seconds: Int
+    let visual_fill: Double
+    let active_run_snapshot: Run?  // Always nil — clears the snapshot
+    let runs: [Run]?
+    let updated_at: String
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encode(progress, forKey: .progress)
+        try container.encode(break_progress, forKey: .break_progress)
+        try container.encode(segments, forKey: .segments)
+        try container.encode(used_seconds, forKey: .used_seconds)
+        try container.encode(visual_fill, forKey: .visual_fill)
+        try container.encode(active_run_snapshot, forKey: .active_run_snapshot)
+        try container.encodeIfPresent(runs, forKey: .runs)
+        try container.encode(updated_at, forKey: .updated_at)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status, progress, break_progress, segments, used_seconds
+        case visual_fill, active_run_snapshot, runs, updated_at
+    }
+}
+
+/// Fields written when only changing a block's status (skip, auto-skip)
+struct StatusUpdateFields: Encodable {
+    let status: String
+    let updated_at: String
+}
+
+/// Fields for retroactive auto-fill — uses upsert because the row might not exist yet
+struct AutoFilledBlockFields: Encodable {
+    let id: String
+    let user_id: String
+    let date: String
+    let block_index: Int
+    let is_muted: Bool
+    let is_activated: Bool
+    let category: String?
+    let label: String?
+    let note: String?
+    let status: String
+    let progress: Int
+    let break_progress: Int
+    let runs: [Run]?
+    let active_run_snapshot: Run?
+    let segments: [BlockSegment]
+    let used_seconds: Int
+    let visual_fill: Double
+    let created_at: String
+    let updated_at: String
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(user_id, forKey: .user_id)
+        try container.encode(date, forKey: .date)
+        try container.encode(block_index, forKey: .block_index)
+        try container.encode(is_muted, forKey: .is_muted)
+        try container.encode(is_activated, forKey: .is_activated)
+        try container.encode(category, forKey: .category)
+        try container.encode(label, forKey: .label)
+        try container.encode(note, forKey: .note)
+        try container.encode(status, forKey: .status)
+        try container.encode(progress, forKey: .progress)
+        try container.encode(break_progress, forKey: .break_progress)
+        try container.encodeIfPresent(runs, forKey: .runs)
+        try container.encodeIfPresent(active_run_snapshot, forKey: .active_run_snapshot)
+        try container.encode(segments, forKey: .segments)
+        try container.encode(used_seconds, forKey: .used_seconds)
+        try container.encode(visual_fill, forKey: .visual_fill)
+        try container.encode(created_at, forKey: .created_at)
+        try container.encode(updated_at, forKey: .updated_at)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, user_id, date, block_index, is_muted, is_activated
+        case category, label, note, status, progress, break_progress
+        case runs, active_run_snapshot, segments, used_seconds, visual_fill
+        case created_at, updated_at
+    }
+}
+
 // MARK: - Block Time Utilities
 extension Block {
     /// Convert block index (0-71) to display time string

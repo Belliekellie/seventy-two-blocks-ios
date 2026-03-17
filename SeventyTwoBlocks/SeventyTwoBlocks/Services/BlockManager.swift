@@ -18,6 +18,10 @@ final class BlockManager: ObservableObject {
     private var categoriesLoaded = false
     private var categoriesAreDefaults = false  // Track if we fell back to defaults
     private var favoriteLabelsLoaded = false
+    /// Tracks whether the last loadBlocks call successfully fetched data from the database.
+    /// When false, blocks are empty placeholders — processAutoSkip must NOT save them to DB
+    /// because the upsert would overwrite real data with empty blocks.
+    private(set) var lastLoadSucceeded = false
 
     // MARK: - Load Blocks
 
@@ -74,6 +78,7 @@ final class BlockManager: ObservableObject {
             }
 
             blocks = fullBlocks
+            lastLoadSucceeded = true
             onBlocksChanged?()
         } catch {
             self.error = error.localizedDescription
@@ -85,6 +90,7 @@ final class BlockManager: ObservableObject {
             // no internet), keep the existing blocks — they're still valid local data.
             let existingDate = blocks.first?.date
             if existingDate != dateString {
+                lastLoadSucceeded = false
                 blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
                 onBlocksChanged?()
             }
@@ -667,6 +673,12 @@ final class BlockManager: ObservableObject {
         // Only process blocks for today
         guard currentDate == today else { return }
 
+        // CRITICAL: Don't save placeholder blocks to DB when the last load failed.
+        // On a fresh app restart, if the database load fails (network/auth/timeout),
+        // blocks are empty placeholders. Saving these as "skipped" would overwrite
+        // the user's real data in the database via upsert.
+        let canPersistToDB = lastLoadSucceeded
+
         // Get dayStartHour to determine logical day order
         // With dayStartHour = 7, the logical day order is: indices 21-71, then 0-20
         // So indices 0-20 are FUTURE blocks (end of day), not past blocks
@@ -748,46 +760,17 @@ final class BlockManager: ObservableObject {
         }
 
         // PHASE 2: Save to database in background (doesn't block UI)
-        for block in blocksToSave {
-            await saveBlockToDBOnly(block)
-        }
-    }
-
-    /// Save block to database only (doesn't update local state - already done)
-    private func saveBlockToDBOnly(_ block: Block) async {
-        do {
-            let db = await supabaseDBAsync()
-            guard let session = try? await supabaseAuth.session else { return }
-
-            let userId = session.user.id.uuidString
-            let blockToSave = Block(
-                id: block.id,
-                userId: userId,
-                date: block.date,
-                blockIndex: block.blockIndex,
-                isMuted: block.isMuted,
-                isActivated: block.isActivated,
-                category: block.category,
-                label: block.label,
-                note: block.note,
-                status: block.status,
-                progress: block.progress,
-                breakProgress: block.breakProgress,
-                runs: block.runs,
-                activeRunSnapshot: block.activeRunSnapshot,
-                segments: block.segments,
-                usedSeconds: block.usedSeconds,
-                visualFill: block.visualFill,
-                createdAt: block.createdAt,
-                updatedAt: ISO8601DateFormatter().string(from: Date())
-            )
-
-            try await db
-                .from("blocks")
-                .upsert(blockToSave, onConflict: "user_id,date,block_index")
-                .execute()
-        } catch {
-            print("❌ Error saving block \(block.blockIndex) to DB: \(error)")
+        // Uses targeted status-only update — never overwrites segments, usedSeconds, etc.
+        if canPersistToDB {
+            for block in blocksToSave {
+                await updateBlockStatus(
+                    blockIndex: block.blockIndex,
+                    date: block.date,
+                    status: block.status
+                )
+            }
+        } else {
+            print("⚠️ processAutoSkip: Skipping DB writes — blocks are placeholders from a failed load")
         }
     }
 
@@ -908,6 +891,88 @@ final class BlockManager: ObservableObject {
             print("✅ Updated block \(blockIndex) metadata (targeted)")
         } catch {
             print("❌ Error updating block metadata: \(error)")
+        }
+    }
+
+    /// Generic targeted update for timer-related fields on a block that definitely exists in the DB.
+    /// Uses .update() (NOT upsert) — safe because the timer was running on this block, so the row exists.
+    /// The generic parameter T controls exactly which columns are written.
+    func updateBlockTimerData<T: Encodable>(blockIndex: Int, date: String, fields: T) async {
+        do {
+            let db = await supabaseDBAsync()
+            guard let session = try? await supabaseAuth.session else { return }
+
+            try await db
+                .from("blocks")
+                .update(fields)
+                .eq("user_id", value: session.user.id.uuidString)
+                .eq("date", value: date)
+                .eq("block_index", value: blockIndex)
+                .execute()
+            print("✅ Updated block \(blockIndex) timer data (targeted)")
+        } catch {
+            print("❌ Error updating block timer data: \(error)")
+        }
+    }
+
+    /// Targeted update that only changes a block's status. Replaces saveBlockToDBOnly.
+    /// Uses .update() — the row exists because we're changing an existing block's status.
+    func updateBlockStatus(blockIndex: Int, date: String, status: BlockStatus) async {
+        do {
+            let db = await supabaseDBAsync()
+            guard let session = try? await supabaseAuth.session else { return }
+
+            try await db
+                .from("blocks")
+                .update(StatusUpdateFields(
+                    status: status.rawValue,
+                    updated_at: ISO8601DateFormatter().string(from: Date())
+                ))
+                .eq("user_id", value: session.user.id.uuidString)
+                .eq("date", value: date)
+                .eq("block_index", value: blockIndex)
+                .execute()
+            print("✅ Updated block \(blockIndex) status to \(status.rawValue) (targeted)")
+        } catch {
+            print("❌ Error updating block status: \(error)")
+        }
+    }
+
+    /// Upsert for retroactive auto-fill blocks where the row might not exist yet.
+    /// Uses .upsert() with conflict key because the block may not have been created in the DB.
+    func upsertAutoFilledBlock(_ block: Block) async {
+        do {
+            let db = await supabaseDBAsync()
+
+            let fields = AutoFilledBlockFields(
+                id: block.id,
+                user_id: block.userId,
+                date: block.date,
+                block_index: block.blockIndex,
+                is_muted: block.isMuted,
+                is_activated: block.isActivated,
+                category: block.category,
+                label: block.label,
+                note: block.note,
+                status: block.status.rawValue,
+                progress: Int(block.progress),
+                break_progress: Int(block.breakProgress),
+                runs: block.runs,
+                active_run_snapshot: block.activeRunSnapshot,
+                segments: block.segments,
+                used_seconds: block.usedSeconds,
+                visual_fill: block.visualFill,
+                created_at: block.createdAt,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+
+            try await db
+                .from("blocks")
+                .upsert(fields, onConflict: "user_id,date,block_index")
+                .execute()
+            print("✅ Upserted auto-filled block \(block.blockIndex) on \(block.date)")
+        } catch {
+            print("❌ Error upserting auto-filled block: \(error)")
         }
     }
 
