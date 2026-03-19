@@ -1110,6 +1110,8 @@ struct MainView: View {
             date: date,
             fields: TimerCompletionFields(
                 status: updatedBlock.status.rawValue,
+                category: updatedBlock.category,
+                label: updatedBlock.label,
                 progress: Int(updatedBlock.progress),
                 break_progress: Int(updatedBlock.breakProgress),
                 segments: updatedBlock.segments,
@@ -1483,12 +1485,14 @@ struct MainView: View {
                     // Update local state
                     blockManager.updateBlockLocally(finalBlock)
 
-                    // Targeted DB update — only timer result fields
+                    // Targeted DB update — timer result fields + category/label
                     await blockManager.updateBlockTimerData(
                         blockIndex: blockIndex,
                         date: finalBlock.date,
                         fields: TimerCompletionFields(
                             status: BlockStatus.done.rawValue,
+                            category: finalBlock.category,
+                            label: finalBlock.label,
                             progress: Int(finalBlock.progress),
                             break_progress: Int(finalBlock.breakProgress),
                             segments: finalBlock.segments,
@@ -2239,12 +2243,14 @@ struct MainView: View {
         // Update local state
         blockManager.updateBlockLocally(updatedBlock)
 
-        // Targeted DB update — only timer result fields
+        // Targeted DB update — timer result fields + category/label
         await blockManager.updateBlockTimerData(
             blockIndex: orphanedBlock.blockIndex,
             date: orphanedBlock.date,
             fields: TimerCompletionFields(
                 status: BlockStatus.done.rawValue,
+                category: updatedBlock.category,
+                label: updatedBlock.label,
                 progress: Int(updatedBlock.progress),
                 break_progress: Int(updatedBlock.breakProgress),
                 segments: updatedBlock.segments,

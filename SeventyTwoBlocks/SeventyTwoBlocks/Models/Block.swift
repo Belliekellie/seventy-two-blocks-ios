@@ -262,8 +262,13 @@ struct Block: Codable, Identifiable {
 // Using targeted updates prevents concurrent saves from overwriting each other's data.
 
 /// Fields written when a timer completes (block finishes its 20-minute window)
+/// Includes category/label because the user may have switched from break back to work
+/// mid-block, and the final category should be written to the database.
+/// Safe from race conditions: timer is already stopped, no autosave can interfere.
 struct TimerCompletionFields: Encodable {
     let status: String
+    let category: String?
+    let label: String?
     let progress: Int
     let break_progress: Int
     let segments: [BlockSegment]
@@ -276,6 +281,9 @@ struct TimerCompletionFields: Encodable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(status, forKey: .status)
+        // Explicitly encode category/label even when nil (clears stale break values)
+        try container.encode(category, forKey: .category)
+        try container.encode(label, forKey: .label)
         try container.encode(progress, forKey: .progress)
         try container.encode(break_progress, forKey: .break_progress)
         try container.encode(segments, forKey: .segments)
@@ -288,7 +296,7 @@ struct TimerCompletionFields: Encodable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case status, progress, break_progress, segments, used_seconds
+        case status, category, label, progress, break_progress, segments, used_seconds
         case visual_fill, active_run_snapshot, runs, updated_at
     }
 }
