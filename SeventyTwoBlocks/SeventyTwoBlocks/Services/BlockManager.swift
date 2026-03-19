@@ -791,58 +791,68 @@ final class BlockManager: ObservableObject {
 
         var newIsActivated = block.isActivated
         var newStatus = block.status
-        var needsSave = false
 
         // Mark as activated (hides moon icon in Night segment)
         if !block.isActivated {
             newIsActivated = true
-            needsSave = true
         }
 
         // Clear .planned status since timer is starting
         if block.status == .planned {
             newStatus = .idle
-            needsSave = true
             print("📋 Cleared .planned status for block \(blockIndex) — timer is starting")
         }
 
-        if needsSave {
-            // Update local array with ONLY the changed fields
-            if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
-                blocks[localIdx].isActivated = newIsActivated
-                blocks[localIdx].status = newStatus
-            }
+        // Update local array
+        if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
+            blocks[localIdx].isActivated = newIsActivated
+            blocks[localIdx].status = newStatus
+        }
 
-            // TARGETED DB update — only changes is_activated, status, updated_at.
-            // Never overwrites segments, usedSeconds, or other timer data.
-            // Previously used saveBlock() (full upsert) which caused a race condition:
-            // if the app was backgrounded right after timer start, this save could resume
-            // later and overwrite completed block data with stale partial data.
-            do {
-                let db = await supabaseDBAsync()
-                guard let session = try? await supabaseAuth.session else { return }
+        // CRITICAL: Ensure the database row exists BEFORE any targeted .update() calls.
+        // Targeted updates only modify existing rows — if no row exists, they silently
+        // do nothing and the data only lives in memory. When the app reloads from the
+        // database, blocks without rows vanish.
+        // ignoreDuplicates: true means this INSERT does nothing if the row already exists,
+        // so it can never overwrite data from a completed block.
+        do {
+            let db = await supabaseDBAsync()
+            guard let session = try? await supabaseAuth.session else { return }
+            let userId = session.user.id.uuidString
 
-                struct ActivationFields: Encodable {
-                    let is_activated: Bool
-                    let status: String
-                    let updated_at: String
-                }
+            var blockToEnsure = block
+            blockToEnsure.isActivated = newIsActivated
+            blockToEnsure.status = newStatus
 
-                try await db
-                    .from("blocks")
-                    .update(ActivationFields(
-                        is_activated: newIsActivated,
-                        status: newStatus.rawValue,
-                        updated_at: ISO8601DateFormatter().string(from: Date())
-                    ))
-                    .eq("user_id", value: session.user.id.uuidString)
-                    .eq("date", value: today)
-                    .eq("block_index", value: blockIndex)
-                    .execute()
-                print("✅ Activated block \(blockIndex) (targeted update)")
-            } catch {
-                print("❌ Error activating block: \(error)")
-            }
+            let ensureBlock = Block(
+                id: blockToEnsure.id,
+                userId: userId,
+                date: blockToEnsure.date,
+                blockIndex: blockToEnsure.blockIndex,
+                isMuted: blockToEnsure.isMuted,
+                isActivated: newIsActivated,
+                category: blockToEnsure.category,
+                label: blockToEnsure.label,
+                note: blockToEnsure.note,
+                status: newStatus,
+                progress: blockToEnsure.progress,
+                breakProgress: blockToEnsure.breakProgress,
+                runs: blockToEnsure.runs,
+                activeRunSnapshot: blockToEnsure.activeRunSnapshot,
+                segments: blockToEnsure.segments,
+                usedSeconds: blockToEnsure.usedSeconds,
+                visualFill: blockToEnsure.visualFill,
+                createdAt: blockToEnsure.createdAt,
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            )
+
+            try await db
+                .from("blocks")
+                .upsert(ensureBlock, onConflict: "user_id,date,block_index", ignoreDuplicates: true)
+                .execute()
+            print("✅ Ensured block \(blockIndex) row exists in DB + activated")
+        } catch {
+            print("❌ Error ensuring block row exists: \(error)")
         }
     }
 

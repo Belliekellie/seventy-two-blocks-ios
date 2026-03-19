@@ -682,10 +682,8 @@ struct MainView: View {
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                             isProcessingForegroundRecovery = false
-                            // Deferred reload
-                            try? await Task.sleep(for: .seconds(3))
-                            guard !self.isProcessingForegroundRecovery else { return }
-                            await blockManager.reloadBlocks()
+                            // No deferred reload — local state is authoritative.
+                            // Reloading from DB risks overwriting fills if saves haven't landed yet.
                         }
                     }
                 }
@@ -735,10 +733,8 @@ struct MainView: View {
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                             isProcessingForegroundRecovery = false
-                            // Deferred reload: sync with DB after all saves are guaranteed complete
-                            try? await Task.sleep(for: .seconds(3))
-                            guard !self.isProcessingForegroundRecovery else { return }
-                            await blockManager.reloadBlocks()
+                            // No deferred reload — local state is authoritative.
+                            // Reloading from DB risks overwriting fills if saves haven't landed yet.
                         }
                     } else {
                         // Still within auto-continue period — show dialog with REMAINING time
@@ -771,10 +767,8 @@ struct MainView: View {
                             await goalManager.loadGoals(for: selectedDate)
                             await blockManager.processAutoSkip(currentBlockIndex: currentBlockIndex, timerBlockIndex: timerManager.currentBlockIndex, blocksWithTimerUsage: blocksWithTimerUsage)
                             isProcessingForegroundRecovery = false
-                            // Deferred reload
-                            try? await Task.sleep(for: .seconds(3))
-                            guard !self.isProcessingForegroundRecovery else { return }
-                            await blockManager.reloadBlocks()
+                            // No deferred reload — local state is authoritative.
+                            // Reloading from DB risks overwriting fills if saves haven't landed yet.
                         }
                     } else {
                         // Still within break auto-continue period
@@ -2666,6 +2660,9 @@ struct MainView: View {
             // Use remote segments if available
             let existingSegments = !remoteSegments.isEmpty ? remoteSegments : block.segments
             let existingVisualFill = !remoteSegments.isEmpty ? remoteVisualFill : block.visualFill
+
+            // Ensure the block row exists in DB before targeted updates
+            await blockManager.activateBlockForTimer(blockIndex: block.blockIndex)
 
             // Start a break instead of the planned work (timer runs to block boundary)
             timerManager.startTimer(
