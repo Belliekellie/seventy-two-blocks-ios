@@ -228,16 +228,28 @@ struct BlockGridView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .segmentFocusChanged)) { notification in
-                // Triggered when timer actions cause segment change (continue, start new block, etc.)
+                // Triggered when timer actions cause block change (continue, start new block, etc.)
                 if isToday {
                     handleSegmentChange(proxy: proxy)
+                    // Always scroll to current block, even if segment didn't change
+                    // (e.g., auto-continue to next block within same segment)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo("block-\(currentBlockIndex)", anchor: UnitPoint(x: 0.5, y: 0.35))
+                        }
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // When returning from background, immediately check if segment changed
-                // (e.g., user left app at night, opens in morning)
+                // When returning from background, check if segment changed and scroll to current block
                 if isToday {
                     handleSegmentChange(proxy: proxy)
+                    // Always scroll to current block on foreground return
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo("block-\(currentBlockIndex)", anchor: UnitPoint(x: 0.5, y: 0.35))
+                        }
+                    }
                 }
             }
         }
