@@ -950,13 +950,20 @@ final class BlockManager: ObservableObject {
 
     /// Upsert for retroactive auto-fill blocks where the row might not exist yet.
     /// Uses .upsert() with conflict key because the block may not have been created in the DB.
+    /// CRITICAL: Uses auth session user ID, NOT block.userId — local placeholder blocks have
+    /// userId="" which would create orphaned rows invisible to reload queries.
     func upsertAutoFilledBlock(_ block: Block) async {
         do {
             let db = await supabaseDBAsync()
+            guard let session = try? await supabaseAuth.session else {
+                print("❌ upsertAutoFilledBlock: No auth session, cannot save block \(block.blockIndex)")
+                return
+            }
+            let userId = session.user.id.uuidString
 
             let fields = AutoFilledBlockFields(
                 id: block.id,
-                user_id: block.userId,
+                user_id: userId,
                 date: block.date,
                 block_index: block.blockIndex,
                 is_muted: block.isMuted,
