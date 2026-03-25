@@ -41,6 +41,15 @@ final class BlockManager: ObservableObject {
         error = nil
         defer { isLoading = false }
 
+        // Immediately replace old blocks with empty placeholders for the new date.
+        // This prevents yesterday's completed blocks from being visible during the
+        // network load (which can take seconds on slow connections).
+        let existingDate = blocks.first?.date
+        if existingDate != nil && existingDate != dateString {
+            blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
+            onBlocksChanged?()
+        }
+
         do {
             // Get authenticated database client
             let db = await supabaseDBAsync()

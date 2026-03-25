@@ -698,11 +698,14 @@ struct MainView: View {
                 // don't try to retroactively fill blocks across days — just clean up the
                 // stale completion state. The completed block was already saved by
                 // restoreFromBackground → handleTimerComplete.
-                // checkForBlockChange() will then show the DayEndDialog so the user
-                // can choose "Start Next Day" or "Continue Working".
+                // Auto-switch to today — no need for DayEndDialog when returning from background.
+                // The dialog should only appear when the day boundary crosses while actively using the app.
                 if !isToday && (timerManager.showTimerComplete || timerManager.showBreakComplete) {
                     handleStop()
                     showOverview = false  // Dismiss overview left open from a previous day
+                    continuedPastDayEnd = false
+                    blocksWithTimerUsage = []  // Fresh day — clear yesterday's usage
+                    selectedDate = logicalToday  // Auto-switch to today (triggers block load via .onChange)
                     isProcessingForegroundRecovery = false
                 } else if timerManager.showTimerComplete, let completedAt = timerManager.timerCompletedAt {
                     let timeSinceCompletion = Date().timeIntervalSince(completedAt)

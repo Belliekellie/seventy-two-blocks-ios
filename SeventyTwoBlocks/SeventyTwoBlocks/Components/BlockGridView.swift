@@ -120,8 +120,9 @@ struct BlockGridView: View {
     @State private var lastSegmentId: String = ""
     @State private var shouldScrollToCurrentBlock = true
 
-    // 3 columns for the grid (3 blocks = 1 hour)
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    // Manual browsing detection — suppresses autoscroll when user is scrolling around
+    @State private var userIsManuallyBrowsing = false
+    @State private var lastManualScrollTime: Date?
 
     private var dateString: String {
         let formatter = DateFormatter()
@@ -190,10 +191,20 @@ struct BlockGridView: View {
                     .id("segment-\(segment.id)")
                 }
             }
+            // Detect manual scrolling — when user drags, suppress autoscroll
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10)
+                    .onChanged { _ in
+                        if !userIsManuallyBrowsing {
+                            userIsManuallyBrowsing = true
+                        }
+                        lastManualScrollTime = Date()
+                    }
+            )
             .onAppear {
                 initializeCollapseState()
 
-                // Scroll to current block after a short delay
+                // Scroll to current block after a short delay (initial load always scrolls)
                 if shouldScrollToCurrentBlock && isToday {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -207,12 +218,13 @@ struct BlockGridView: View {
                 // Reset state when date changes
                 didInitialize = false
                 shouldScrollToCurrentBlock = true
+                userIsManuallyBrowsing = false  // Reset browsing on date switch
                 pinnedOpen.removeAll()
                 pinnedClosed.removeAll()
                 surfaced.removeAll()
                 initializeCollapseState()
 
-                // Scroll to current block for today
+                // Scroll to current block for today (date change always scrolls)
                 if isToday {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -222,17 +234,23 @@ struct BlockGridView: View {
                 }
             }
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-                // Check for segment change every minute (only for today)
                 if isToday {
+                    // Expire manual browsing after 60 seconds of no scrolling
+                    if userIsManuallyBrowsing, let lastScroll = lastManualScrollTime,
+                       Date().timeIntervalSince(lastScroll) > 60 {
+                        userIsManuallyBrowsing = false
+                    }
+                    // Check for segment change (only scrolls when segment actually changes)
                     handleSegmentChange(proxy: proxy)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .segmentFocusChanged)) { notification in
-                // Triggered when timer actions cause block change (continue, start new block, etc.)
+                // Timer action (continue, start new block) — this is a meaningful event.
+                // Always scroll here, even if user was manually browsing, because
+                // the block they were looking at is now in the past.
                 if isToday {
+                    userIsManuallyBrowsing = false  // Timer event overrides manual browsing
                     handleSegmentChange(proxy: proxy)
-                    // Always scroll to current block, even if segment didn't change
-                    // (e.g., auto-continue to next block within same segment)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             proxy.scrollTo("block-\(currentBlockIndex)", anchor: UnitPoint(x: 0.5, y: 0.35))
@@ -241,10 +259,11 @@ struct BlockGridView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // When returning from background, check if segment changed and scroll to current block
+                // Returning from background — always scroll to current block.
+                // User expects to see where they are when they come back.
                 if isToday {
+                    userIsManuallyBrowsing = false  // Reset browsing on foreground return
                     handleSegmentChange(proxy: proxy)
-                    // Always scroll to current block on foreground return
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             proxy.scrollTo("block-\(currentBlockIndex)", anchor: UnitPoint(x: 0.5, y: 0.35))
@@ -347,6 +366,10 @@ struct BlockGridView: View {
         let oldSegmentId = lastSegmentId
         lastSegmentId = newSegmentId
 
+        // Segment change is a major event — old section collapses, new one expands.
+        // Override manual browsing because the layout is shifting.
+        userIsManuallyBrowsing = false
+
         // TIME TRUMPS PINS - clear pinnedOpen on old segment when time naturally changes
         // This matches web app behavior: "Time changes always clear pinned state"
         pinnedOpen.remove(oldSegmentId)
@@ -394,9 +417,6 @@ struct SegmentSection: View {
     let onToggle: () -> Void
     @Binding var selectedBlockIndex: Int?
 
-    // 3 columns for the grid (3 blocks = 1 hour)
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
-
     private var blockRange: String {
         let start = segment.displayBlockNumber(segment.startBlock)
         let end = segment.displayBlockNumber(segment.endBlock)
@@ -438,28 +458,39 @@ struct SegmentSection: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 4)
 
-            // Block grid (collapsible)
+            // Block grid (collapsible) — uses non-lazy VStack+HStack layout
+            // so all block IDs are always present for reliable scrollTo targeting.
+            // Only 24 blocks per section so no performance concern.
             if !isCollapsed {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    // Use segment.blockIndices to handle wrap-around correctly
-                    ForEach(segment.blockIndices, id: \.self) { blockIndex in
-                        let block = blocks.first { $0.blockIndex == blockIndex }
-                        BlockItemView(
-                            block: block,
-                            blockIndex: blockIndex,
-                            segment: segment,
-                            showMotivationalInsults: showMotivationalInsults,
-                            isViewingToday: isViewingToday
-                        )
-                        .id("block-\(blockIndex)")
-                        .onTapGesture {
-                            // Just set the block index - BlockSheetView will look up the current block
-                            if let existingBlock = block {
-                                print("👆 Tapped block \(blockIndex): id='\(existingBlock.id)', label='\(existingBlock.label ?? "nil")'")
-                            } else {
-                                print("👆 Tapped block \(blockIndex): no existing block in local state")
+                let indices = segment.blockIndices
+                let rowCount = (indices.count + 2) / 3  // ceil(count / 3)
+                VStack(spacing: 6) {
+                    ForEach(0..<rowCount, id: \.self) { row in
+                        HStack(spacing: 8) {
+                            ForEach(0..<3, id: \.self) { col in
+                                let flatIndex = row * 3 + col
+                                if flatIndex < indices.count {
+                                    let blockIndex = indices[flatIndex]
+                                    let block = blocks.first { $0.blockIndex == blockIndex }
+                                    BlockItemView(
+                                        block: block,
+                                        blockIndex: blockIndex,
+                                        segment: segment,
+                                        showMotivationalInsults: showMotivationalInsults,
+                                        isViewingToday: isViewingToday
+                                    )
+                                    .id("block-\(blockIndex)")
+                                    .frame(maxWidth: .infinity)
+                                    .onTapGesture {
+                                        if let existingBlock = block {
+                                            print("👆 Tapped block \(blockIndex): id='\(existingBlock.id)', label='\(existingBlock.label ?? "nil")'")
+                                        } else {
+                                            print("👆 Tapped block \(blockIndex): no existing block in local state")
+                                        }
+                                        selectedBlockIndex = blockIndex
+                                    }
+                                }
                             }
-                            selectedBlockIndex = blockIndex
                         }
                     }
                 }
