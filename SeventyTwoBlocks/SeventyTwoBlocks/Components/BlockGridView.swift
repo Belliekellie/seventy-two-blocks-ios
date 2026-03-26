@@ -120,9 +120,6 @@ struct BlockGridView: View {
     @State private var lastSegmentId: String = ""
     @State private var shouldScrollToCurrentBlock = true
 
-    // Manual browsing detection — suppresses autoscroll when user is scrolling around
-    @State private var userIsManuallyBrowsing = false
-    @State private var lastManualScrollTime: Date?
 
     private var dateString: String {
         let formatter = DateFormatter()
@@ -191,20 +188,10 @@ struct BlockGridView: View {
                     .id("segment-\(segment.id)")
                 }
             }
-            // Detect manual scrolling — when user drags, suppress autoscroll
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { _ in
-                        if !userIsManuallyBrowsing {
-                            userIsManuallyBrowsing = true
-                        }
-                        lastManualScrollTime = Date()
-                    }
-            )
             .onAppear {
                 initializeCollapseState()
 
-                // Scroll to current block after a short delay (initial load always scrolls)
+                // Scroll to current block on initial load
                 if shouldScrollToCurrentBlock && isToday {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -218,13 +205,12 @@ struct BlockGridView: View {
                 // Reset state when date changes
                 didInitialize = false
                 shouldScrollToCurrentBlock = true
-                userIsManuallyBrowsing = false  // Reset browsing on date switch
                 pinnedOpen.removeAll()
                 pinnedClosed.removeAll()
                 surfaced.removeAll()
                 initializeCollapseState()
 
-                // Scroll to current block for today (date change always scrolls)
+                // Scroll to current block when switching to today
                 if isToday {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -234,22 +220,16 @@ struct BlockGridView: View {
                 }
             }
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+                // Only handle segment collapse/expand — NO scrolling here.
+                // User should be free to browse without being yanked back every minute.
                 if isToday {
-                    // Expire manual browsing after 60 seconds of no scrolling
-                    if userIsManuallyBrowsing, let lastScroll = lastManualScrollTime,
-                       Date().timeIntervalSince(lastScroll) > 60 {
-                        userIsManuallyBrowsing = false
-                    }
-                    // Check for segment change (only scrolls when segment actually changes)
                     handleSegmentChange(proxy: proxy)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .segmentFocusChanged)) { notification in
-                // Timer action (continue, start new block) — this is a meaningful event.
-                // Always scroll here, even if user was manually browsing, because
-                // the block they were looking at is now in the past.
+                // Timer moved to a new block (auto-continue, start new block).
+                // Scroll to the new current block.
                 if isToday {
-                    userIsManuallyBrowsing = false  // Timer event overrides manual browsing
                     handleSegmentChange(proxy: proxy)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -259,10 +239,8 @@ struct BlockGridView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // Returning from background — always scroll to current block.
-                // User expects to see where they are when they come back.
+                // Returning from background — scroll to current block.
                 if isToday {
-                    userIsManuallyBrowsing = false  // Reset browsing on foreground return
                     handleSegmentChange(proxy: proxy)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -365,10 +343,6 @@ struct BlockGridView: View {
 
         let oldSegmentId = lastSegmentId
         lastSegmentId = newSegmentId
-
-        // Segment change is a major event — old section collapses, new one expands.
-        // Override manual browsing because the layout is shifting.
-        userIsManuallyBrowsing = false
 
         // TIME TRUMPS PINS - clear pinnedOpen on old segment when time naturally changes
         // This matches web app behavior: "Time changes always clear pinned state"
