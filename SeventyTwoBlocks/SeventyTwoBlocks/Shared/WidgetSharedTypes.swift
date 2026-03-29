@@ -80,15 +80,6 @@ struct WidgetBlockEntry: Codable {
     let label: String?
 }
 
-// MARK: - Upcoming Block Info (for Live Activity timeline)
-
-struct UpcomingBlockInfo: Codable, Hashable {
-    let displayNumber: Int    // e.g. 7, 8, 9
-    let timerStartAt: Date    // when this block's timer begins (= previous block's auto-continue end)
-    let timerEndAt: Date      // when this block's timer ends
-    let autoContinueEndAt: Date?  // nil = last block (check-in, no auto-continue)
-}
-
 // MARK: - Live Activity Attributes
 
 #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
@@ -118,9 +109,17 @@ struct TimerActivityAttributes: ActivityAttributes {
         let currentBlockStartTime: String?  // "08:00"
         let currentBlockEndTime: String?    // "08:20"
 
-        // Upcoming blocks after current, in order (variable count based on check-in setting)
-        let upcomingBlocks: [UpcomingBlockInfo]
-        let sessionEndAt: Date  // furthest end time (for compact DI countdown)
+        // Next block info (for continuous background display)
+        let nextBlockIndex: Int?
+        let nextBlockDisplayNumber: Int?
+        let nextBlockTimerEndAt: Date?
+        let nextBlockAutoContinueEndAt: Date?
+
+        // Third block info (to match 3-block check-in limit)
+        let thirdBlockIndex: Int?
+        let thirdBlockDisplayNumber: Int?
+        let thirdBlockTimerEndAt: Date?
+        let thirdBlockAutoContinueEndAt: Date?
     }
 }
 #endif
@@ -183,23 +182,6 @@ enum BlockTimeUtils {
         let startOfDay = calendar.startOfDay(for: date)
         let blockStartMinutes = index * WidgetConstants.blockDurationMinutes
         return startOfDay.addingTimeInterval(TimeInterval(blockStartMinutes * 60))
-    }
-
-    /// Compact block time range: "9:20-40" (same hour) or "9:40-10:00" (crosses hour)
-    static func compactBlockRange(_ index: Int) -> String {
-        let startTotal = index * WidgetConstants.blockDurationMinutes
-        let endTotal = (index + 1) * WidgetConstants.blockDurationMinutes
-        let startHour = startTotal / 60
-        let startMin = startTotal % 60
-        let endHour = endTotal / 60
-        let endMin = endTotal % 60
-        let startH12 = startHour == 0 ? 12 : (startHour > 12 ? startHour - 12 : startHour)
-        if startHour == endHour {
-            return String(format: "%d:%02d-%02d", startH12, startMin, endMin)
-        } else {
-            let endH12 = endHour == 0 ? 12 : (endHour > 12 ? endHour - 12 : endHour)
-            return String(format: "%d:%02d-%d:%02d", startH12, startMin, endH12, endMin)
-        }
     }
 
     /// Day progress as fraction (0.0 - 1.0) based on blocks completed out of total

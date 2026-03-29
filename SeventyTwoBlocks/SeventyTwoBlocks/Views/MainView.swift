@@ -973,22 +973,10 @@ struct MainView: View {
                     isBreak: timerManager.isBreak
                 )
             }
-            // When timer just completed, tell the Live Activity to switch to auto-continue phase.
-            // Without this, the Dynamic Island and Lock Screen keep showing the block timer
-            // counting UP (since the end date is now in the past). The cached next/third block
-            // dates are preserved by updateLiveActivityForAutoContinue.
-            if timerManager.showTimerComplete && !timerManager.isActive {
-                let autoContinueSeconds: TimeInterval = timerManager.isBreak ? 30 : 25
-                if let completedAt = timerManager.timerCompletedAt {
-                    let autoContinueEndAt = completedAt.addingTimeInterval(autoContinueSeconds)
-                    if autoContinueEndAt > Date() {
-                        WidgetDataProvider.shared.updateLiveActivityForAutoContinue(
-                            autoContinueEndAt: autoContinueEndAt,
-                            isBreak: timerManager.isBreak
-                        )
-                    }
-                }
-            }
+            // NOTE: Don't call updateLiveActivityForAutoContinue here - it wipes out the next block info
+            // that was set in startLiveActivity. The Live Activity's TimelineView handles phase
+            // transitions autonomously using the pre-set dates (timerEndAt, autoContinueEndAt,
+            // nextBlockTimerEndAt, nextBlockAutoContinueEndAt).
         }
 
         // Grace period expired: user didn't respond to check-in, block should be marked as skipped
@@ -1754,14 +1742,6 @@ struct MainView: View {
             let totalExistingSeconds = existingSegments.reduce(0) { $0 + $1.seconds }
             print("📱 Passing \(existingSegments.count) segments (\(totalExistingSeconds)s) to continueToNextBlock")
 
-            // Update Live Activity cache BEFORE starting timer.
-            // continueToNextBlock triggers onWidgetUpdate synchronously, which calls
-            // updateLiveActivity using cached values. Without this, the first update
-            // after auto-continue would use stale cache from the previous block.
-            if skipLiveActivityRestart {
-                WidgetDataProvider.shared.updateCachedBlockInfo(blockIndex: nextBlockIndex, isBreak: wasBreak)
-            }
-
             timerManager.continueToNextBlock(
                 nextBlockIndex: nextBlockIndex,
                 date: todayString,
@@ -1776,7 +1756,7 @@ struct MainView: View {
                 timerManager.isInCheckInGracePeriod = true
             }
 
-            // Start new Live Activity (only when not reusing existing one)
+            // Start Live Activity (skip during auto-continue - existing activity handles it)
             if !skipLiveActivityRestart {
                 startWidgetLiveActivity(
                     blockIndex: nextBlockIndex,
@@ -1785,6 +1765,10 @@ struct MainView: View {
                     category: category,
                     label: label
                 )
+            } else {
+                // Update cached block info so subsequent updateLiveActivity calls
+                // show the correct block number (not the previous block's)
+                WidgetDataProvider.shared.updateCachedBlockInfo(blockIndex: nextBlockIndex, isBreak: wasBreak)
             }
 
             // Activate and save the block

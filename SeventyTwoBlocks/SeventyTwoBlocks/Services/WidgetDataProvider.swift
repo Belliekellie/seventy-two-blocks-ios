@@ -21,9 +21,16 @@ final class WidgetDataProvider {
     private var cachedCurrentBlockDisplayNumber: Int?
     private var cachedCurrentBlockStartTime: String?
     private var cachedCurrentBlockEndTime: String?
-    // Upcoming blocks cache (variable count based on check-in setting)
-    private var cachedUpcomingBlocks: [UpcomingBlockInfo] = []
-    private var cachedSessionEndAt: Date = Date()
+    // Next block cache
+    private var cachedNextBlockIndex: Int?
+    private var cachedNextBlockDisplayNumber: Int?
+    private var cachedNextBlockTimerEndAt: Date?
+    private var cachedNextBlockAutoContinueEndAt: Date?
+    // Third block cache (to match 3-block check-in limit)
+    private var cachedThirdBlockIndex: Int?
+    private var cachedThirdBlockDisplayNumber: Int?
+    private var cachedThirdBlockTimerEndAt: Date?
+    private var cachedThirdBlockAutoContinueEndAt: Date?
     #endif
 
     private init() {
@@ -163,8 +170,14 @@ final class WidgetDataProvider {
                 currentBlockDisplayNumber: nil,
                 currentBlockStartTime: nil,
                 currentBlockEndTime: nil,
-                upcomingBlocks: [],
-                sessionEndAt: Date()
+                nextBlockIndex: nil,
+                nextBlockDisplayNumber: nil,
+                nextBlockTimerEndAt: nil,
+                nextBlockAutoContinueEndAt: nil,
+                thirdBlockIndex: nil,
+                thirdBlockDisplayNumber: nil,
+                thirdBlockTimerEndAt: nil,
+                thirdBlockAutoContinueEndAt: nil
             )
             // Use staleDate in the past to force immediate dismissal
             let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(-1))
@@ -195,36 +208,17 @@ final class WidgetDataProvider {
         let autoContinueSeconds: TimeInterval = isBreak ? 30 : 25
         let autoContinueEndAt = timerEndAt.addingTimeInterval(autoContinueSeconds)
 
-        // Read check-in limit from settings (same UserDefaults that @AppStorage uses)
-        let blocksUntilCheckIn = UserDefaults.standard.object(forKey: "blocksUntilCheckIn") as? Int ?? 3
+        // Calculate next block info so Live Activity can continue after auto-continue
+        let nextBlockIndex = blockIndex + 1
+        let nextBlockTimerEndAt = nextBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: nextBlockIndex) : nil
+        let nextBlockAutoContinueEndAt = nextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+        let nextBlockDisplayNum = nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil
 
-        // Partial blocks don't count toward the check-in limit
-        let isPartial = timerEndAt.timeIntervalSince(timerStartedAt) < 1140
-        let upcomingCount = blocksUntilCheckIn + (isPartial ? 1 : 0)
-
-        // Build the upcoming blocks array
-        var upcoming: [UpcomingBlockInfo] = []
-        var prevEnd = autoContinueEndAt  // first upcoming block starts when current's auto-continue ends
-
-        for i in 1...upcomingCount {
-            let upIndex = blockIndex + i
-            guard upIndex < 72 else { break }
-
-            let isLast = (i == upcomingCount)
-            let upEndAt = BlockTimeUtils.blockEndDate(for: upIndex)
-            let upAcEnd = isLast ? nil : upEndAt.addingTimeInterval(autoContinueSeconds)
-
-            upcoming.append(UpcomingBlockInfo(
-                displayNumber: BlockTimeUtils.displayBlockNumber(upIndex, dayStartHour: dayStartHour),
-                timerStartAt: prevEnd,
-                timerEndAt: upEndAt,
-                autoContinueEndAt: upAcEnd
-            ))
-
-            prevEnd = upAcEnd ?? upEndAt
-        }
-
-        let sessionEndAt = upcoming.last?.timerEndAt ?? timerEndAt
+        // Calculate third block info (to match 3-block check-in limit)
+        let thirdBlockIndex = blockIndex + 2
+        let thirdBlockTimerEndAt = thirdBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: thirdBlockIndex) : nil
+        let thirdBlockAutoContinueEndAt = thirdBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
+        let thirdBlockDisplayNum = thirdBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(thirdBlockIndex, dayStartHour: dayStartHour) : nil
 
         // Cache all values so updateLiveActivity can preserve them
         cachedAutoContinueEndAt = autoContinueEndAt
@@ -232,8 +226,14 @@ final class WidgetDataProvider {
         cachedCurrentBlockDisplayNumber = BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: dayStartHour)
         cachedCurrentBlockStartTime = BlockTimeUtils.blockToTime(blockIndex)
         cachedCurrentBlockEndTime = BlockTimeUtils.blockEndTime(blockIndex)
-        cachedUpcomingBlocks = upcoming
-        cachedSessionEndAt = sessionEndAt
+        cachedNextBlockIndex = nextBlockIndex < 72 ? nextBlockIndex : nil
+        cachedNextBlockDisplayNumber = nextBlockDisplayNum
+        cachedNextBlockTimerEndAt = nextBlockTimerEndAt
+        cachedNextBlockAutoContinueEndAt = nextBlockAutoContinueEndAt
+        cachedThirdBlockIndex = thirdBlockIndex < 72 ? thirdBlockIndex : nil
+        cachedThirdBlockDisplayNumber = thirdBlockDisplayNum
+        cachedThirdBlockTimerEndAt = thirdBlockTimerEndAt
+        cachedThirdBlockAutoContinueEndAt = thirdBlockAutoContinueEndAt
 
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
@@ -249,12 +249,18 @@ final class WidgetDataProvider {
             currentBlockDisplayNumber: BlockTimeUtils.displayBlockNumber(blockIndex, dayStartHour: dayStartHour),
             currentBlockStartTime: BlockTimeUtils.blockToTime(blockIndex),
             currentBlockEndTime: BlockTimeUtils.blockEndTime(blockIndex),
-            upcomingBlocks: upcoming,
-            sessionEndAt: sessionEndAt
+            nextBlockIndex: cachedNextBlockIndex,
+            nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
+            nextBlockTimerEndAt: nextBlockTimerEndAt,
+            nextBlockAutoContinueEndAt: nextBlockAutoContinueEndAt,
+            thirdBlockIndex: cachedThirdBlockIndex,
+            thirdBlockDisplayNumber: cachedThirdBlockDisplayNumber,
+            thirdBlockTimerEndAt: thirdBlockTimerEndAt,
+            thirdBlockAutoContinueEndAt: thirdBlockAutoContinueEndAt
         )
 
-        // Stale date extends to cover the full session
-        let staleDate = cachedSessionEndAt.addingTimeInterval(60)
+        // Stale date extends to cover third block's auto-continue (matches 3-block check-in limit)
+        let staleDate = thirdBlockAutoContinueEndAt ?? nextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         do {
@@ -297,12 +303,18 @@ final class WidgetDataProvider {
             currentBlockDisplayNumber: cachedCurrentBlockDisplayNumber,
             currentBlockStartTime: cachedCurrentBlockStartTime,
             currentBlockEndTime: cachedCurrentBlockEndTime,
-            upcomingBlocks: cachedUpcomingBlocks,
-            sessionEndAt: cachedSessionEndAt
+            nextBlockIndex: cachedNextBlockIndex,
+            nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
+            nextBlockTimerEndAt: cachedNextBlockTimerEndAt,
+            nextBlockAutoContinueEndAt: cachedNextBlockAutoContinueEndAt,
+            thirdBlockIndex: cachedThirdBlockIndex,
+            thirdBlockDisplayNumber: cachedThirdBlockDisplayNumber,
+            thirdBlockTimerEndAt: cachedThirdBlockTimerEndAt,
+            thirdBlockAutoContinueEndAt: cachedThirdBlockAutoContinueEndAt
         )
 
-        // Stale date should extend to cover the full session
-        let staleDate = cachedSessionEndAt.addingTimeInterval(60)
+        // Stale date should extend to cover all phases (3 blocks to match check-in limit)
+        let staleDate = cachedThirdBlockAutoContinueEndAt ?? cachedNextBlockAutoContinueEndAt ?? timerEndAt.addingTimeInterval(120)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         Task {
@@ -330,13 +342,17 @@ final class WidgetDataProvider {
             currentBlockDisplayNumber: cachedCurrentBlockDisplayNumber,
             currentBlockStartTime: cachedCurrentBlockStartTime,
             currentBlockEndTime: cachedCurrentBlockEndTime,
-            upcomingBlocks: cachedUpcomingBlocks,
-            sessionEndAt: cachedSessionEndAt
+            nextBlockIndex: cachedNextBlockIndex,
+            nextBlockDisplayNumber: cachedNextBlockDisplayNumber,
+            nextBlockTimerEndAt: cachedNextBlockTimerEndAt,
+            nextBlockAutoContinueEndAt: cachedNextBlockAutoContinueEndAt,
+            thirdBlockIndex: cachedThirdBlockIndex,
+            thirdBlockDisplayNumber: cachedThirdBlockDisplayNumber,
+            thirdBlockTimerEndAt: cachedThirdBlockTimerEndAt,
+            thirdBlockAutoContinueEndAt: cachedThirdBlockAutoContinueEndAt
         )
 
-        // Stale date should cover the full session
-        let staleDate = cachedSessionEndAt.addingTimeInterval(60)
-        let content = ActivityContent(state: state, staleDate: staleDate)
+        let content = ActivityContent(state: state, staleDate: autoContinueEndAt.addingTimeInterval(60))
 
         Task {
             await activity.update(content)
@@ -361,8 +377,14 @@ final class WidgetDataProvider {
                 currentBlockDisplayNumber: nil,
                 currentBlockStartTime: nil,
                 currentBlockEndTime: nil,
-                upcomingBlocks: [],
-                sessionEndAt: Date()
+                nextBlockIndex: nil,
+                nextBlockDisplayNumber: nil,
+                nextBlockTimerEndAt: nil,
+                nextBlockAutoContinueEndAt: nil,
+                thirdBlockIndex: nil,
+                thirdBlockDisplayNumber: nil,
+                thirdBlockTimerEndAt: nil,
+                thirdBlockAutoContinueEndAt: nil
             )
             let content = ActivityContent(state: finalState, staleDate: nil)
 
@@ -378,8 +400,14 @@ final class WidgetDataProvider {
         cachedCurrentBlockDisplayNumber = nil
         cachedCurrentBlockStartTime = nil
         cachedCurrentBlockEndTime = nil
-        cachedUpcomingBlocks = []
-        cachedSessionEndAt = Date()
+        cachedNextBlockIndex = nil
+        cachedNextBlockDisplayNumber = nil
+        cachedNextBlockTimerEndAt = nil
+        cachedNextBlockAutoContinueEndAt = nil
+        cachedThirdBlockIndex = nil
+        cachedThirdBlockDisplayNumber = nil
+        cachedThirdBlockTimerEndAt = nil
+        cachedThirdBlockAutoContinueEndAt = nil
         currentActivity = nil
     }
     /// Update cached block info when reusing an existing Live Activity for a new block.
@@ -395,37 +423,19 @@ final class WidgetDataProvider {
         cachedCurrentBlockEndTime = BlockTimeUtils.blockEndTime(blockIndex)
         cachedAutoContinueEndAt = BlockTimeUtils.blockEndDate(for: blockIndex).addingTimeInterval(autoContinueSeconds)
 
-        // Read check-in limit from settings
-        let blocksUntilCheckIn = UserDefaults.standard.object(forKey: "blocksUntilCheckIn") as? Int ?? 3
+        let nextBlockIndex = blockIndex + 1
+        cachedNextBlockIndex = nextBlockIndex < 72 ? nextBlockIndex : nil
+        cachedNextBlockDisplayNumber = nextBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(nextBlockIndex, dayStartHour: dayStartHour) : nil
+        cachedNextBlockTimerEndAt = nextBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: nextBlockIndex) : nil
+        cachedNextBlockAutoContinueEndAt = cachedNextBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
 
-        // Foreground continuations always start at block boundary (full block), so no partial adjustment
-        let upcomingCount = blocksUntilCheckIn
+        let thirdBlockIndex = blockIndex + 2
+        cachedThirdBlockIndex = thirdBlockIndex < 72 ? thirdBlockIndex : nil
+        cachedThirdBlockDisplayNumber = thirdBlockIndex < 72 ? BlockTimeUtils.displayBlockNumber(thirdBlockIndex, dayStartHour: dayStartHour) : nil
+        cachedThirdBlockTimerEndAt = thirdBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: thirdBlockIndex) : nil
+        cachedThirdBlockAutoContinueEndAt = cachedThirdBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
 
-        var upcoming: [UpcomingBlockInfo] = []
-        var prevEnd = cachedAutoContinueEndAt!
-
-        for i in 1...upcomingCount {
-            let upIndex = blockIndex + i
-            guard upIndex < 72 else { break }
-
-            let isLast = (i == upcomingCount)
-            let upEndAt = BlockTimeUtils.blockEndDate(for: upIndex)
-            let upAcEnd = isLast ? nil : upEndAt.addingTimeInterval(autoContinueSeconds)
-
-            upcoming.append(UpcomingBlockInfo(
-                displayNumber: BlockTimeUtils.displayBlockNumber(upIndex, dayStartHour: dayStartHour),
-                timerStartAt: prevEnd,
-                timerEndAt: upEndAt,
-                autoContinueEndAt: upAcEnd
-            ))
-
-            prevEnd = upAcEnd ?? upEndAt
-        }
-
-        cachedUpcomingBlocks = upcoming
-        cachedSessionEndAt = upcoming.last?.timerEndAt ?? BlockTimeUtils.blockEndDate(for: blockIndex)
-
-        print("📱 Updated Live Activity cache for block \(blockIndex) (display: \(cachedCurrentBlockDisplayNumber ?? -1), upcoming: \(upcoming.count))")
+        print("📱 Updated Live Activity cache for block \(blockIndex) (display: \(cachedCurrentBlockDisplayNumber ?? -1))")
     }
 
     #else
