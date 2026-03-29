@@ -168,20 +168,62 @@ enum BlockTimeUtils {
         return blocksFromStart + 1
     }
 
-    /// Get the end Date for a specific block index on a given date
-    static func blockEndDate(for index: Int, on date: Date = Date()) -> Date {
+    /// Build a DST-safe Date for a wall-clock hour:minute on the same day as `ref`.
+    /// - Spring forward (skipped hour): returns best-effort Date (these blocks get auto-skipped)
+    /// - Fall back (repeated hour): picks the occurrence closest to `ref` so timers
+    ///   work correctly during the second pass of the repeated hour.
+    private static func wallClockDate(hours: Int, minutes: Int, on ref: Date) -> Date {
         let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: date)
+
+        if hours >= 24 {
+            let startOfDay = calendar.startOfDay(for: ref)
+            return calendar.date(byAdding: .day, value: 1, to: startOfDay)
+                ?? startOfDay.addingTimeInterval(86400)
+        }
+
+        var components = calendar.dateComponents([.year, .month, .day], from: ref)
+        components.hour = hours
+        components.minute = minutes
+        components.second = 0
+
+        guard let candidate = calendar.date(from: components) else {
+            let startOfDay = calendar.startOfDay(for: ref)
+            return startOfDay.addingTimeInterval(TimeInterval((hours * 60 + minutes) * 60))
+        }
+
+        // Fall-back DST: the same wall-clock time occurs twice.
+        // date(from:) always returns the first (pre-transition) occurrence.
+        // If `ref` is in the post-transition period, we need the second occurrence.
+        let candidateGMT = calendar.timeZone.secondsFromGMT(for: candidate)
+        let refGMT = calendar.timeZone.secondsFromGMT(for: ref)
+
+        if candidateGMT != refGMT {
+            let shift = TimeInterval(candidateGMT - refGMT)
+            let alternative = candidate.addingTimeInterval(shift)
+            if calendar.component(.hour, from: alternative) == hours &&
+               calendar.component(.minute, from: alternative) == minutes &&
+               calendar.isDate(alternative, inSameDayAs: ref) {
+                if abs(alternative.timeIntervalSince(ref)) < abs(candidate.timeIntervalSince(ref)) {
+                    return alternative
+                }
+            }
+        }
+
+        return candidate
+    }
+
+    /// Get the end Date for a specific block index on a given date
+    /// DST-safe: handles both spring forward and fall back correctly
+    static func blockEndDate(for index: Int, on date: Date = Date()) -> Date {
         let blockEndMinutes = (index + 1) * WidgetConstants.blockDurationMinutes
-        return startOfDay.addingTimeInterval(TimeInterval(blockEndMinutes * 60))
+        return wallClockDate(hours: blockEndMinutes / 60, minutes: blockEndMinutes % 60, on: date)
     }
 
     /// Get the start Date for a specific block index on a given date
+    /// DST-safe: handles both spring forward and fall back correctly
     static func blockStartDate(for index: Int, on date: Date = Date()) -> Date {
-        let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: date)
         let blockStartMinutes = index * WidgetConstants.blockDurationMinutes
-        return startOfDay.addingTimeInterval(TimeInterval(blockStartMinutes * 60))
+        return wallClockDate(hours: blockStartMinutes / 60, minutes: blockStartMinutes % 60, on: date)
     }
 
     /// Day progress as fraction (0.0 - 1.0) based on blocks completed out of total
