@@ -18,6 +18,7 @@ final class BlockManager: ObservableObject {
     private var categoriesLoaded = false
     private var categoriesAreDefaults = false  // Track if we fell back to defaults
     private var favoriteLabelsLoaded = false
+    let localStore = LocalBlockStore()
     /// Tracks whether the last loadBlocks call successfully fetched data from the database.
     /// When false, blocks are empty placeholders — processAutoSkip must NOT save them to DB
     /// because the upsert would overwrite real data with empty blocks.
@@ -41,20 +42,32 @@ final class BlockManager: ObservableObject {
         error = nil
         defer { isLoading = false }
 
-        // Immediately replace old blocks with empty placeholders for the new date.
-        // This prevents yesterday's completed blocks from being visible during the
-        // network load (which can take seconds on slow connections).
-        let existingDate = blocks.first?.date
-        if existingDate != nil && existingDate != dateString {
-            blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
+        // Check if we already have blocks in memory for this date (e.g. from
+        // foreground recovery which just updated them). In-memory data is the
+        // most current — don't overwrite it with a stale local file snapshot.
+        let alreadyHasDataForDate = !blocks.isEmpty && blocks.first?.date == dateString
+
+        if alreadyHasDataForDate {
+            print("📱 Already have in-memory blocks for \(dateString), keeping them as merge base")
+        } else if let localBlocks = localStore.loadBlocks(for: dateString) {
+            // Load from local file (instant, works offline)
+            blocks = localBlocks
+            lastLoadSucceeded = true
             onBlocksChanged?()
+            print("📱 Loaded \(localBlocks.count) blocks from local cache for \(dateString)")
+        } else {
+            // No local cache — show empty placeholders while cloud loads
+            let existingDate = blocks.first?.date
+            if existingDate != nil && existingDate != dateString {
+                blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
+                onBlocksChanged?()
+            }
         }
 
+        // Then fetch from cloud and merge
         do {
-            // Get authenticated database client
             let db = await supabaseDBAsync()
 
-            // Fetch blocks for the date (RLS will filter by user_id automatically)
             let fetchedBlocks: [Block] = try await db
                 .from("blocks")
                 .select()
@@ -63,45 +76,49 @@ final class BlockManager: ObservableObject {
                 .execute()
                 .value
 
-            print("📥 Loaded \(fetchedBlocks.count) blocks from database for \(dateString)")
-            for block in fetchedBlocks where block.label != nil {
-                print("📥   Block \(block.blockIndex): label='\(block.label ?? "nil")', category='\(block.category ?? "nil")'")
-            }
-            // Debug: log blocks with segments to verify visualFill is loaded correctly
+            print("📥 Loaded \(fetchedBlocks.count) blocks from cloud for \(dateString)")
             for block in fetchedBlocks where !block.segments.isEmpty {
                 let segmentSeconds = block.segments.reduce(0) { $0 + $1.seconds }
                 print("📥   Block \(block.blockIndex) has segments: \(block.segments.count) segs, \(segmentSeconds)s total, visualFill=\(String(format: "%.2f", block.visualFill)), status=\(block.status)")
             }
 
-            // Create a full array of 72 blocks, filling in missing ones
-            var fullBlocks: [Block] = []
+            // Build full 72-block array from cloud data
+            var cloudBlocks: [Block] = []
             let blockDict = Dictionary(uniqueKeysWithValues: fetchedBlocks.map { ($0.blockIndex, $0) })
-
             for index in 0..<72 {
                 if let existingBlock = blockDict[index] {
-                    fullBlocks.append(existingBlock)
+                    cloudBlocks.append(existingBlock)
                 } else {
-                    // Create placeholder block
-                    fullBlocks.append(createEmptyBlock(index: index, date: dateString))
+                    cloudBlocks.append(createEmptyBlock(index: index, date: dateString))
                 }
             }
 
-            blocks = fullBlocks
+            // Merge local + cloud: work data wins, then newer timestamp wins
+            let mergedBlocks = LocalBlockStore.mergeBlocks(local: blocks, remote: cloudBlocks)
+            blocks = mergedBlocks
             lastLoadSucceeded = true
             onBlocksChanged?()
+
+            // Save merged result locally
+            localStore.saveBlocks(mergedBlocks, for: dateString)
+            // Cloud fetch succeeded — this date is no longer dirty
+            localStore.clearDirty(date: dateString)
         } catch {
             self.error = error.localizedDescription
-            print("Error loading blocks: \(error)")
+            print("Error loading blocks from cloud: \(error)")
 
-            // If we're switching to a different day and can't reach the database,
-            // show empty blocks rather than keeping stale blocks from the old day.
-            // But if this is a reload of the SAME day (e.g. foreground return with
-            // no internet), keep the existing blocks — they're still valid local data.
-            let existingDate = blocks.first?.date
-            if existingDate != dateString {
-                lastLoadSucceeded = false
-                blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
-                onBlocksChanged?()
+            // If we already loaded from local cache, that's fine — we have valid data
+            if localStore.loadBlocks(for: dateString) != nil {
+                print("📱 Cloud unavailable but local cache is valid for \(dateString)")
+                lastLoadSucceeded = true
+            } else {
+                // No local cache AND cloud failed — show empty placeholders
+                let existingDate = blocks.first?.date
+                if existingDate != dateString {
+                    lastLoadSucceeded = false
+                    blocks = (0..<72).map { createEmptyBlock(index: $0, date: dateString) }
+                    onBlocksChanged?()
+                }
             }
         }
     }
@@ -255,10 +272,11 @@ final class BlockManager: ObservableObject {
     }
 
     /// Update a block in the local array immediately (triggers UI refresh).
-    /// Use before an async saveBlock when instant visual feedback is needed.
+    /// Also persists to local file so data survives even if cloud save fails.
     func updateBlockLocally(_ block: Block) {
         if let index = blocks.firstIndex(where: { $0.blockIndex == block.blockIndex && $0.date == block.date }) {
             blocks[index] = block
+            localStore.saveBlocks(blocks, for: block.date)
         }
     }
 
@@ -322,10 +340,14 @@ final class BlockManager: ObservableObject {
             }
 
             onBlocksChanged?()
+            localStore.saveBlocks(blocks, for: blockToSave.date)
             print("✅ Saved block \(blockToSave.blockIndex) successfully")
         } catch {
             self.error = error.localizedDescription
             print("Error saving block: \(error)")
+            // Still save locally even if cloud failed
+            localStore.saveBlocks(blocks, for: block.date)
+            localStore.markDirty(date: block.date)
         }
     }
 
@@ -763,9 +785,10 @@ final class BlockManager: ObservableObject {
             print("♻️ Un-skipped current block \(currentBlockIndex) — it's the active time window")
         }
 
-        // Notify UI of changes immediately
+        // Notify UI of changes immediately and persist locally
         if !blocksToSave.isEmpty {
             onBlocksChanged?()
+            localStore.saveBlocks(blocks, for: currentDate)
         }
 
         // PHASE 2: Save to database in background (doesn't block UI)
@@ -916,10 +939,15 @@ final class BlockManager: ObservableObject {
     /// Generic targeted update for timer-related fields on a block that definitely exists in the DB.
     /// Uses .update() (NOT upsert) — safe because the timer was running on this block, so the row exists.
     /// The generic parameter T controls exactly which columns are written.
-    func updateBlockTimerData<T: Encodable>(blockIndex: Int, date: String, fields: T) async {
+    @discardableResult
+    func updateBlockTimerData<T: Encodable>(blockIndex: Int, date: String, fields: T) async -> Bool {
         do {
             let db = await supabaseDBAsync()
-            guard let session = try? await supabaseAuth.session else { return }
+            guard let session = try? await supabaseAuth.session else {
+                print("❌ updateBlockTimerData: no session for block \(blockIndex)")
+                localStore.markDirty(date: date)
+                return false
+            }
 
             try await db
                 .from("blocks")
@@ -929,17 +957,25 @@ final class BlockManager: ObservableObject {
                 .eq("block_index", value: blockIndex)
                 .execute()
             print("✅ Updated block \(blockIndex) timer data (targeted)")
+            return true
         } catch {
             print("❌ Error updating block timer data: \(error)")
+            localStore.markDirty(date: date)
+            return false
         }
     }
 
     /// Targeted update that only changes a block's status. Replaces saveBlockToDBOnly.
     /// Uses .update() — the row exists because we're changing an existing block's status.
-    func updateBlockStatus(blockIndex: Int, date: String, status: BlockStatus) async {
+    @discardableResult
+    func updateBlockStatus(blockIndex: Int, date: String, status: BlockStatus) async -> Bool {
         do {
             let db = await supabaseDBAsync()
-            guard let session = try? await supabaseAuth.session else { return }
+            guard let session = try? await supabaseAuth.session else {
+                print("❌ updateBlockStatus: no session for block \(blockIndex)")
+                localStore.markDirty(date: date)
+                return false
+            }
 
             try await db
                 .from("blocks")
@@ -952,8 +988,11 @@ final class BlockManager: ObservableObject {
                 .eq("block_index", value: blockIndex)
                 .execute()
             print("✅ Updated block \(blockIndex) status to \(status.rawValue) (targeted)")
+            return true
         } catch {
             print("❌ Error updating block status: \(error)")
+            localStore.markDirty(date: date)
+            return false
         }
     }
 

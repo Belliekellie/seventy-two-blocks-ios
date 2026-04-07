@@ -82,17 +82,26 @@ final class SupabaseManager: @unchecked Sendable {
     let auth: AuthClient
     private let storage = KeychainAuthStorage()
 
-    /// Get database client with current auth token
+    /// Get database client with current auth token.
+    /// If the session is expired or unavailable, actively refreshes it before giving up.
     func getDatabase() async -> PostgrestClient {
         var headers: [String: String] = ["apikey": SupabaseConfig.anonKey]
 
-        // Try to get current access token from session
+        // Try to get current session
         do {
             let session = try await auth.session
             headers["Authorization"] = "Bearer \(session.accessToken)"
             print("✅ Got auth token for user: \(session.user.id)")
         } catch {
-            print("⚠️ No active session for database request: \(error)")
+            // Session failed — actively refresh the token instead of just retrying
+            print("⚠️ Session unavailable, attempting token refresh...")
+            do {
+                let refreshed = try await auth.refreshSession()
+                headers["Authorization"] = "Bearer \(refreshed.accessToken)"
+                print("✅ Token refreshed for user: \(refreshed.user.id)")
+            } catch {
+                print("⚠️ Token refresh failed: \(error)")
+            }
         }
 
         return PostgrestClient(

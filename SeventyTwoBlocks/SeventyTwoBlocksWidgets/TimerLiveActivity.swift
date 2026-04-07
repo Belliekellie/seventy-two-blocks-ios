@@ -302,6 +302,19 @@ struct LockScreenBannerView: View {
             ProgressView(timerInterval: context.state.timerStartedAt...context.state.timerEndAt, countsDown: false)
                 .tint(context.state.isBreak ? .red : Color.fromHSL(context.state.categoryColor))
                 .labelsHidden()
+
+            // TEST: Does this countdown activate autonomously when timerEndAt arrives?
+            if let acEnd = context.state.autoContinueEndAt {
+                HStack(spacing: 4) {
+                    Text("AC TEST:")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.green)
+                    Text(timerInterval: context.state.timerEndAt...acEnd, countsDown: true)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(.green)
+                }
+            }
         }
     }
 }

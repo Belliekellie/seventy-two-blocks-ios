@@ -809,6 +809,22 @@ struct MainView: View {
             // NOTE: resetInteractionCounter() was moved to the TOP of this handler
             // (right after isProcessingForegroundRecovery = true) so it runs BEFORE
             // shouldSuppressAutoContinue is checked. See comment there for details.
+
+            // 9. Sync any dates that had local saves but failed cloud saves
+            let dirtyDates = blockManager.localStore.dirtyDates
+            if !dirtyDates.isEmpty {
+                Task {
+                    for dirtyDate in dirtyDates {
+                        if let localBlocks = blockManager.localStore.loadBlocks(for: dirtyDate) {
+                            let blocksWithWork = localBlocks.filter { $0.usedSeconds > 0 || !$0.segments.isEmpty }
+                            for block in blocksWithWork {
+                                await blockManager.saveBlock(block)
+                            }
+                            print("🔄 Synced \(blocksWithWork.count) dirty blocks for \(dirtyDate)")
+                        }
+                    }
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             backgroundedAt = Date()
@@ -1108,23 +1124,41 @@ struct MainView: View {
 
         // Targeted DB update — only writes timer result fields, never touches category/label/note/muted etc.
         // This prevents the race condition where a concurrent autosave could overwrite completion data.
-        await blockManager.updateBlockTimerData(
+        let completionFields = TimerCompletionFields(
+            status: updatedBlock.status.rawValue,
+            category: updatedBlock.category,
+            label: updatedBlock.label,
+            progress: Int(updatedBlock.progress),
+            break_progress: Int(updatedBlock.breakProgress),
+            segments: updatedBlock.segments,
+            used_seconds: updatedBlock.usedSeconds,
+            visual_fill: updatedBlock.visualFill,
+            active_run_snapshot: nil,
+            runs: updatedBlock.runs,
+            updated_at: ISO8601DateFormatter().string(from: Date())
+        )
+
+        let saved = await blockManager.updateBlockTimerData(
             blockIndex: blockIndex,
             date: date,
-            fields: TimerCompletionFields(
-                status: updatedBlock.status.rawValue,
-                category: updatedBlock.category,
-                label: updatedBlock.label,
-                progress: Int(updatedBlock.progress),
-                break_progress: Int(updatedBlock.breakProgress),
-                segments: updatedBlock.segments,
-                used_seconds: updatedBlock.usedSeconds,
-                visual_fill: updatedBlock.visualFill,
-                active_run_snapshot: nil,
-                runs: updatedBlock.runs,
-                updated_at: ISO8601DateFormatter().string(from: Date())
-            )
+            fields: completionFields
         )
+
+        // Retry once if the first save failed (session may have been temporarily unavailable)
+        if !saved {
+            print("⚠️ saveTimerCompletion: first save failed for block \(blockIndex), retrying in 3s...")
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            let retried = await blockManager.updateBlockTimerData(
+                blockIndex: blockIndex,
+                date: date,
+                fields: completionFields
+            )
+            if retried {
+                print("✅ saveTimerCompletion: retry succeeded for block \(blockIndex)")
+            } else {
+                print("❌ saveTimerCompletion: retry ALSO failed for block \(blockIndex) — data may be lost!")
+            }
+        }
 
         // Verify save: check local state matches what we saved
         if let savedBlock = blockManager.blocks.first(where: { $0.blockIndex == blockIndex && $0.date == date }) {
