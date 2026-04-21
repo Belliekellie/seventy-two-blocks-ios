@@ -24,6 +24,16 @@ final class BlockManager: ObservableObject {
     /// because the upsert would overwrite real data with empty blocks.
     private(set) var lastLoadSucceeded = false
 
+    init() {
+        // Load cached categories synchronously at startup so colors are available
+        // from the very first render — no flash, no delay.
+        if let cached = localStore.loadCategories(), !cached.isEmpty {
+            categories = cached
+            categoriesLoaded = true
+            categoriesAreDefaults = false
+        }
+    }
+
     // MARK: - Load Blocks
 
     func loadBlocks(for date: Date) async {
@@ -356,16 +366,25 @@ final class BlockManager: ObservableObject {
     func loadCategories() async {
         print("Starting to load categories...")
 
+        // Load from local cache first (instant, avoids green flash)
+        if let cachedCategories = localStore.loadCategories(), !cachedCategories.isEmpty {
+            categories = cachedCategories
+            categoriesAreDefaults = false
+            print("📱 Loaded \(cachedCategories.count) categories from local cache")
+        }
+
         do {
             // Get authenticated database client
             let db = await supabaseDBAsync()
 
             // Get user ID
             guard let session = try? await supabaseAuth.session else {
-                print("⚠️ No session, using default categories")
-                categories = Category.defaults
+                if categories.isEmpty || categoriesAreDefaults {
+                    print("⚠️ No session, using default categories")
+                    categories = Category.defaults
+                    categoriesAreDefaults = true
+                }
                 categoriesLoaded = true
-                categoriesAreDefaults = true
                 return
             }
 
@@ -396,6 +415,7 @@ final class BlockManager: ObservableObject {
                 if let customCats = profile.customCategories, !customCats.isEmpty {
                     categories = customCats
                     categoriesAreDefaults = false
+                    localStore.saveCategories(customCats)
                     print("✅ Loaded \(customCats.count) custom categories from Supabase")
                     // Log labels for each category
                     for cat in customCats {
@@ -420,12 +440,16 @@ final class BlockManager: ObservableObject {
             categoriesLoaded = true
 
         } catch {
-            // On error, use defaults (will retry on next loadBlocks call)
+            // On error, keep cached categories if we have them, otherwise use defaults
             print("❌ Error loading categories: \(error)")
-            print("Using default categories as fallback (will retry)")
-            categories = Category.defaults
+            if categories.isEmpty || categoriesAreDefaults {
+                print("Using default categories as fallback (will retry)")
+                categories = Category.defaults
+                categoriesAreDefaults = true
+            } else {
+                print("📱 Keeping locally cached categories")
+            }
             categoriesLoaded = true
-            categoriesAreDefaults = true
         }
     }
 
@@ -452,6 +476,7 @@ final class BlockManager: ObservableObject {
                 updatedCategory.label = name
                 updatedCategory.color = color
                 categories[index] = updatedCategory
+                localStore.saveCategories(categories)
             }
 
             // Save all categories to profile using update

@@ -121,7 +121,35 @@ final class LocalBlockStore: @unchecked Sendable {
         return local.updatedAt >= remote.updatedAt ? local : remote
     }
 
+    // MARK: - Categories Cache
+
+    func saveCategories(_ categories: [Category]) {
+        let url = categoriesFileURL
+        do {
+            let data = try encoder.encode(categories)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("❌ LocalBlockStore: failed to save categories: \(error)")
+        }
+    }
+
+    func loadCategories() -> [Category]? {
+        let url = categoriesFileURL
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        do {
+            let data = try Data(contentsOf: url)
+            return try decoder.decode([Category].self, from: data)
+        } catch {
+            print("⚠️ LocalBlockStore: failed to read categories: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Private
+
+    private var categoriesFileURL: URL {
+        blocksDirectory.appendingPathComponent("categories.json")
+    }
 
     private func fileURL(for date: String) -> URL {
         blocksDirectory.appendingPathComponent("blocks-\(date).json")
