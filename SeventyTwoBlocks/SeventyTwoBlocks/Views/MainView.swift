@@ -959,6 +959,26 @@ struct MainView: View {
                 await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments, visualFill: visualFill, blockTimeElapsed: shouldMarkDone, category: capturedCategory, label: capturedLabel)
                 self.pendingCompletionSave = nil
             }
+
+            // Push a delayed Live Activity update to ensure the AC timer interval
+            // has definitely started (Date() > timerEndAt). iOS only counts down
+            // intervals where now >= startDate at the time of the update.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+                if let endAt = self.timerManager.exposedEndAt, let startedAt = self.timerManager.exposedStartedAt {
+                    let categoryColor = self.blockManager.categories.first { $0.id == self.timerManager.currentCategory }?.color
+                    WidgetDataProvider.shared.updateLiveActivity(
+                        timerEndAt: endAt,
+                        timerStartedAt: startedAt,
+                        category: self.timerManager.currentCategory,
+                        categoryColor: categoryColor,
+                        label: self.timerManager.currentLabel,
+                        progress: 1.0,
+                        isBreak: isBreak,
+                        force: true
+                    )
+                }
+            }
         }
 
         timerManager.onSaveSnapshot = { blockIndex, date, snapshot in
@@ -976,8 +996,12 @@ struct MainView: View {
                 timerManager: timerManager,
                 goalManager: goalManager
             )
-            // Update Live Activity state
-            if timerManager.isActive, let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt {
+            // Update Live Activity state — also push on timer completion so the
+            // auto-continue timer interval (which just became "current") starts counting.
+            // iOS only renders active countdowns for intervals where now >= startDate at the
+            // time of the last activity.update() call.
+            if let endAt = timerManager.exposedEndAt, let startedAt = timerManager.exposedStartedAt,
+               timerManager.isActive || timerManager.showTimerComplete || timerManager.showBreakComplete {
                 let categoryColor = blockManager.categories.first { $0.id == timerManager.currentCategory }?.color
                 WidgetDataProvider.shared.updateLiveActivity(
                     timerEndAt: endAt,
@@ -989,10 +1013,6 @@ struct MainView: View {
                     isBreak: timerManager.isBreak
                 )
             }
-            // NOTE: Don't call updateLiveActivityForAutoContinue here - it wipes out the next block info
-            // that was set in startLiveActivity. The Live Activity's TimelineView handles phase
-            // transitions autonomously using the pre-set dates (timerEndAt, autoContinueEndAt,
-            // nextBlockTimerEndAt, nextBlockAutoContinueEndAt).
         }
 
         // Grace period expired: user didn't respond to check-in, block should be marked as skipped

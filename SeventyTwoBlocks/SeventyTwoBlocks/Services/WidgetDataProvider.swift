@@ -270,11 +270,20 @@ final class WidgetDataProvider {
                 pushType: nil
             )
             currentActivity = activity
+            // Reset change tracking (fresh activity = fresh state)
+            lastSentCategory = category
+            lastSentLabel = label
+            lastSentIsBreak = isBreak
             print("📱 Live Activity started for block \(blockIndex)")
         } catch {
             print("📱 Failed to start Live Activity: \(error)")
         }
     }
+
+    // Track last state sent to avoid redundant updates that may reset iOS timer tracking
+    private var lastSentCategory: String?
+    private var lastSentLabel: String?
+    private var lastSentIsBreak: Bool = false
 
     func updateLiveActivity(
         timerEndAt: Date,
@@ -283,12 +292,22 @@ final class WidgetDataProvider {
         categoryColor: String?,
         label: String?,
         progress: Double,
-        isBreak: Bool
+        isBreak: Bool,
+        force: Bool = false
     ) {
         guard let activity = currentActivity else { return }
 
-        // Preserve all cached values so TimelineView phase logic works correctly
-        // Without these, the Live Activity loses the ability to transition through phases
+        // Only push updates when something meaningful changed or when forced (timer completion).
+        // Redundant updates during normal countdown may interfere with iOS's internal
+        // timer interval tracking, preventing future timers from auto-activating.
+        let stateChanged = category != lastSentCategory || label != lastSentLabel || isBreak != lastSentIsBreak
+        guard force || stateChanged else { return }
+
+        lastSentCategory = category
+        lastSentLabel = label
+        lastSentIsBreak = isBreak
+
+        // Preserve all cached values so timer chain continues correctly
         let state = TimerActivityAttributes.ContentState(
             timerEndAt: timerEndAt,
             timerStartedAt: timerStartedAt,
@@ -435,13 +454,19 @@ final class WidgetDataProvider {
         cachedThirdBlockTimerEndAt = thirdBlockIndex < 72 ? BlockTimeUtils.blockEndDate(for: thirdBlockIndex) : nil
         cachedThirdBlockAutoContinueEndAt = cachedThirdBlockTimerEndAt?.addingTimeInterval(autoContinueSeconds)
 
+        // Reset change tracking so the next updateLiveActivity call goes through
+        // (new block = new state that must be pushed even if same category/label)
+        lastSentCategory = nil
+        lastSentLabel = nil
+        lastSentIsBreak = false
+
         print("📱 Updated Live Activity cache for block \(blockIndex) (display: \(cachedCurrentBlockDisplayNumber ?? -1))")
     }
 
     #else
     // Stub methods for Mac Catalyst where Live Activities aren't available
     func startLiveActivity(blockIndex: Int, isBreak: Bool, timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double) async {}
-    func updateLiveActivity(timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double, isBreak: Bool) {}
+    func updateLiveActivity(timerEndAt: Date, timerStartedAt: Date, category: String?, categoryColor: String?, label: String?, progress: Double, isBreak: Bool, force: Bool = false) {}
     func updateLiveActivityForAutoContinue(autoContinueEndAt: Date, isBreak: Bool) {}
     func updateCachedBlockInfo(blockIndex: Int, isBreak: Bool) {}
     func endLiveActivity() {}
