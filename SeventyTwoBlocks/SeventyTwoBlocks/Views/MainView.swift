@@ -2460,6 +2460,7 @@ struct MainView: View {
         }
 
         // Update all blocks in memory immediately (synchronous, no awaits)
+        let nowTimestamp = ISO8601DateFormatter().string(from: Date())
         for fillIdx in blocksToFill {
             let segment = BlockSegment(
                 type: isBreak ? .break : .work,
@@ -2477,6 +2478,7 @@ struct MainView: View {
                 blockManager.blocks[arrIdx].activeRunSnapshot = nil
                 blockManager.blocks[arrIdx].category = category
                 blockManager.blocks[arrIdx].label = label
+                blockManager.blocks[arrIdx].updatedAt = nowTimestamp
             }
             blocksWithTimerUsage.insert(fillIdx)
             timerManager.incrementInteractionCounter()
@@ -2555,6 +2557,7 @@ struct MainView: View {
         updatedBlock.visualFill = 1.0
         updatedBlock.segments = [segment]
         updatedBlock.activeRunSnapshot = nil  // Clear any stale snapshot
+        updatedBlock.updatedAt = ISO8601DateFormatter().string(from: Date())
         // Use the passed category/label directly — don't fall back to block's
         // old values, as the user may have intentionally cleared them.
         updatedBlock.category = category

@@ -20,7 +20,14 @@ final class AuthManager: ObservableObject {
     }
 
     func checkSession() async {
-        isLoading = true
+        // If the user has logged in before, let them in immediately —
+        // don't wait for the network. The app works offline with local data.
+        if hasLoggedInBefore {
+            isAuthenticated = true
+            print("📱 User has logged in before — granting immediate access")
+        }
+
+        isLoading = !hasLoggedInBefore
         defer { isLoading = false }
 
         do {
@@ -29,13 +36,9 @@ final class AuthManager: ObservableObject {
             isAuthenticated = true
             hasLoggedInBefore = true
         } catch {
-            // Session check failed (no internet, token expired, etc.)
-            // If the user has logged in before, let them in anyway —
-            // the app works offline with local data.
             if hasLoggedInBefore {
-                isAuthenticated = true
-                currentUser = nil
-                print("⚠️ Session check failed but user has logged in before — allowing offline access")
+                // Already let them in above, just log it
+                print("⚠️ Session check failed — continuing with offline access")
             } else {
                 isAuthenticated = false
                 currentUser = nil
