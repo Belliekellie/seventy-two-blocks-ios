@@ -145,7 +145,35 @@ final class LocalBlockStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - Favorite Labels Cache
+
+    func saveFavoriteLabels(_ labels: [String]) {
+        let url = favoriteLabelsFileURL
+        do {
+            let data = try encoder.encode(labels)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("❌ LocalBlockStore: failed to save favorite labels: \(error)")
+        }
+    }
+
+    func loadFavoriteLabels() -> [String]? {
+        let url = favoriteLabelsFileURL
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        do {
+            let data = try Data(contentsOf: url)
+            return try decoder.decode([String].self, from: data)
+        } catch {
+            print("⚠️ LocalBlockStore: failed to read favorite labels: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Private
+
+    private var favoriteLabelsFileURL: URL {
+        blocksDirectory.appendingPathComponent("favorite-labels.json")
+    }
 
     private var categoriesFileURL: URL {
         blocksDirectory.appendingPathComponent("categories.json")

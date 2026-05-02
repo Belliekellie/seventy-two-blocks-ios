@@ -290,6 +290,12 @@ final class BlockManager: ObservableObject {
         }
     }
 
+    /// Save current in-memory blocks to local file (for callers that modify blocks[] directly)
+    func saveBlocksLocally() {
+        guard !currentDate.isEmpty else { return }
+        localStore.saveBlocks(blocks, for: currentDate)
+    }
+
     // MARK: - Save Block
 
     func saveBlock(_ block: Block) async {
@@ -500,6 +506,12 @@ final class BlockManager: ObservableObject {
     func loadFavoriteLabels() async {
         guard !favoriteLabelsLoaded else { return }
 
+        // Load from local cache first (instant)
+        if let cached = localStore.loadFavoriteLabels(), !cached.isEmpty {
+            favoriteLabels = cached
+            print("📱 Loaded \(cached.count) favorite labels from local cache")
+        }
+
         do {
             let db = await supabaseDBAsync()
 
@@ -526,7 +538,8 @@ final class BlockManager: ObservableObject {
 
             if let profile = result.first, let labels = profile.favoriteLabels {
                 favoriteLabels = labels
-                print("✅ Loaded \(labels.count) favorite labels")
+                localStore.saveFavoriteLabels(labels)
+                print("✅ Loaded \(labels.count) favorite labels from cloud")
             }
             favoriteLabelsLoaded = true
         } catch {
@@ -536,6 +549,9 @@ final class BlockManager: ObservableObject {
     }
 
     private func saveFavoriteLabels(_ labels: [String]) async {
+        // Save locally first (survives offline/crashes)
+        localStore.saveFavoriteLabels(labels)
+
         do {
             let db = await supabaseDBAsync()
 
@@ -642,6 +658,7 @@ final class BlockManager: ObservableObject {
 
         category.labels = labels
         categories[index] = category
+        localStore.saveCategories(categories)
         print("📝 Updated labels for \(categoryId): \(labels)")
 
         // Save to Supabase using update
@@ -698,6 +715,7 @@ final class BlockManager: ObservableObject {
 
         category.labels = labels
         categories[index] = category
+        localStore.saveCategories(categories)
         print("🗑️ Updated labels for \(categoryId): \(labels)")
 
         // Save to Supabase
@@ -860,11 +878,12 @@ final class BlockManager: ObservableObject {
             print("📋 Cleared .planned status for block \(blockIndex) — timer is starting")
         }
 
-        // Update local array
+        // Update local array and persist to local file
         if let localIdx = blocks.firstIndex(where: { $0.blockIndex == blockIndex }) {
             blocks[localIdx].isActivated = newIsActivated
             blocks[localIdx].status = newStatus
         }
+        localStore.saveBlocks(blocks, for: today)
 
         // CRITICAL: Ensure the database row exists BEFORE any targeted .update() calls.
         // Targeted updates only modify existing rows — if no row exists, they silently

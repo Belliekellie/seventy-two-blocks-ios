@@ -1313,6 +1313,7 @@ struct MainView: View {
                 blockManager.blocks[localIdx].isActivated = true
                 blockManager.blocks[localIdx].updatedAt = ISO8601DateFormatter().string(from: Date())
             }
+            blockManager.saveBlocksLocally()
 
             // TARGETED DB update — only changes category, label, is_activated, updated_at.
             // Never overwrites segments, usedSeconds, visualFill, or other timer data.
@@ -2484,6 +2485,9 @@ struct MainView: View {
             timerManager.incrementInteractionCounter()
             blocksAutoFilled += 1
         }
+
+        // Persist filled blocks to local file immediately (before async DB saves)
+        blockManager.saveBlocksLocally()
 
         // PHASE 2: Now handle the current block (start timer or stop).
         // This runs before DB saves so the user sees the timer immediately.
