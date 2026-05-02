@@ -954,6 +954,11 @@ struct MainView: View {
                 self.blockManager.blocks[idx].usedSeconds = actualUsedSeconds
                 self.blockManager.blocks[idx].progress = actualProgress
                 self.blockManager.blocks[idx].visualFill = visualFill
+                // CRITICAL: Keep local timestamp in sync with what we'll send to the DB.
+                // Without this, a failed DB write leaves the cloud with a stale autosave
+                // that has a NEWER timestamp — on next reload, the merge picks the cloud's
+                // partial data over our correct local data.
+                self.blockManager.blocks[idx].updatedAt = ISO8601DateFormatter().string(from: Date())
             }
             self.pendingCompletionSave = Task {
                 await self.saveTimerCompletion(blockIndex: blockIndex, date: date, secondsUsed: secondsUsed, initialTime: initialTime, segments: segments, visualFill: visualFill, blockTimeElapsed: shouldMarkDone, category: capturedCategory, label: capturedLabel)
@@ -1112,11 +1117,13 @@ struct MainView: View {
         let blockDurationSeconds = 20 * 60  // 1200 seconds
         let actualProgress = min(100.0, Double(actualUsedSeconds) / Double(blockDurationSeconds) * 100.0)
 
+        let nowTimestamp = ISO8601DateFormatter().string(from: Date())
         var updatedBlock = block
         updatedBlock.usedSeconds = actualUsedSeconds
         updatedBlock.progress = actualProgress
         updatedBlock.visualFill = visualFill  // Save actual visual fill reached
         updatedBlock.activeRunSnapshot = nil  // Clear snapshot — timer is no longer running
+        updatedBlock.updatedAt = nowTimestamp  // Keep local timestamp in sync with DB write
 
         // Only mark as done if block time has elapsed
         // User might stop mid-block and resume later in the same block window
@@ -1268,12 +1275,14 @@ struct MainView: View {
         let newProgress = min(100.0, Double(totalWorkSeconds) / Double(blockDurationSeconds) * 100.0)
         let newBreakProgress = min(100.0, Double(totalBreakSeconds) / Double(blockDurationSeconds) * 100.0)
 
+        let snapshotTimestamp = ISO8601DateFormatter().string(from: Date())
         var updatedBlock = block
         updatedBlock.activeRunSnapshot = snapshot
         updatedBlock.usedSeconds = totalUsedSeconds
         updatedBlock.progress = newProgress
         updatedBlock.breakProgress = newBreakProgress
         updatedBlock.visualFill = timerManager.currentVisualFill
+        updatedBlock.updatedAt = snapshotTimestamp  // Keep local timestamp in sync with DB write
         // During break, don't overwrite the block's category/label with the
         // timer's stale work values — the block should keep whatever was set
         // when work was active. Only update during work mode.

@@ -107,7 +107,8 @@ final class LocalBlockStore: @unchecked Sendable {
     }
 
     /// Pick the better version of a single block.
-    /// Rule: actual work data beats no work data. Otherwise newer timestamp wins.
+    /// Rule: actual work data beats no work data. MORE work data beats less.
+    /// Only fall back to timestamp when work amounts are similar.
     private static func pickWinner(local: Block, remote: Block) -> Block {
         let localHasWork = local.usedSeconds > 0 || !local.segments.isEmpty
         let remoteHasWork = remote.usedSeconds > 0 || !remote.segments.isEmpty
@@ -116,7 +117,15 @@ final class LocalBlockStore: @unchecked Sendable {
         if localHasWork && !remoteHasWork { return local }
         if remoteHasWork && !localHasWork { return remote }
 
-        // Both have work or neither — newer timestamp wins
+        // Both have work — if one has significantly more time, it wins.
+        // This prevents a stale autosave (e.g., 3 minutes) from overwriting
+        // a completed block (20 minutes) due to timestamp differences.
+        let localSeconds = local.usedSeconds
+        let remoteSeconds = remote.usedSeconds
+        if localSeconds > remoteSeconds + 60 { return local }
+        if remoteSeconds > localSeconds + 60 { return remote }
+
+        // Similar work amounts — newer timestamp wins
         // ISO8601 strings are lexicographically sortable
         return local.updatedAt >= remote.updatedAt ? local : remote
     }
